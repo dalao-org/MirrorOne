@@ -1,0 +1,119 @@
+"""
+Base scraper class and data structures.
+"""
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime, UTC
+from typing import ClassVar, Any
+import httpx
+
+
+@dataclass
+class Resource:
+    """Scraped resource data."""
+    file_name: str
+    url: str
+    version: str
+    checksum: str | None = None
+    checksum_type: str | None = None
+
+
+@dataclass
+class VersionMeta:
+    """Version metadata for suggest_versions.txt."""
+    key: str
+    version: str
+
+
+@dataclass
+class ScrapeResult:
+    """Result of a scrape operation."""
+    scraper_name: str
+    success: bool = False
+    resources: list[Resource] = field(default_factory=list)
+    version_metas: list[VersionMeta] = field(default_factory=list)
+    error_message: str | None = None
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    finished_at: datetime | None = None
+    
+    @property
+    def duration_seconds(self) -> float:
+        """Calculate duration in seconds."""
+        if self.finished_at:
+            return (self.finished_at - self.started_at).total_seconds()
+        return 0.0
+    
+    @property
+    def resources_count(self) -> int:
+        """Get count of resources."""
+        return len(self.resources)
+    
+    @property
+    def status(self) -> str:
+        """Get status string."""
+        if self.success:
+            return "success"
+        elif self.resources:
+            return "partial"
+        else:
+            return "failed"
+
+
+class BaseScraper(ABC):
+    """
+    Abstract base class for all scrapers.
+    
+    Subclasses must implement the `scrape` method and set the `name` class variable.
+    """
+    
+    name: ClassVar[str] = "base"
+    
+    def __init__(self, settings: dict[str, Any], http_client: httpx.AsyncClient):
+        """
+        Initialize scraper.
+        
+        Args:
+            settings: Dictionary of settings from database
+            http_client: Shared httpx async client
+        """
+        self.settings = settings
+        self.http_client = http_client
+        self.github_token = settings.get("github_api_token")
+    
+    @abstractmethod
+    async def scrape(self) -> ScrapeResult:
+        """
+        Execute scrape logic.
+        
+        Returns:
+            ScrapeResult with scraped resources and metadata
+        """
+        pass
+    
+    def get_headers(self) -> dict[str, str]:
+        """Get HTTP request headers with optional GitHub auth."""
+        headers = {
+            "User-Agent": "OneinStack-Mirror-Bot/2.0",
+            "Accept": "application/json, text/html, */*",
+        }
+        if self.github_token:
+            headers["Authorization"] = f"Bearer {self.github_token}"
+        return headers
+    
+    async def safe_scrape(self) -> ScrapeResult:
+        """
+        Execute scrape with exception handling.
+        
+        Returns:
+            ScrapeResult, with error_message set if an exception occurred
+        """
+        result = ScrapeResult(scraper_name=self.name)
+        try:
+            result = await self.scrape()
+            result.success = True
+        except Exception as e:
+            result.error_message = f"{type(e).__name__}: {str(e)}"
+            result.success = False
+        finally:
+            result.finished_at = datetime.now(UTC)
+        return result

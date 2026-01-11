@@ -1,124 +1,193 @@
-# Oneinstack Mirror Generator
+# Oneinstack Mirror Generator v2.0
 
-As mirror.oneinstack.com is not trustable, but oneinstack is still a good script worth to use, this project is aim to generate all resource in a mirror to support the script.
+A dynamic mirror generator for OneinStack software packages. This version replaces the static GitHub Actions + Cloudflare Pages approach with a FastAPI backend, Next.js frontend, and Redis-backed redirect rules.
 
+## 🚀 Features
 
-## Supported Packages
+- **Dynamic Redirects**: Real-time redirect rules stored in Redis
+- **Admin Dashboard**: Web-based management interface
+- **Scheduled Scraping**: Automatic background updates via APScheduler
+- **Standardized Scrapers**: Modular scraper architecture for easy extension
+- **Docker Deployment**: One-command deployment with Docker Compose
 
-Status column indicates test status of the package on oneinstack.
+## 🏗️ Architecture
 
-### Independent Packages
-|    Package Name    |                                     Source                                     |    Status    |
-|:------------------:|:------------------------------------------------------------------------------:|:------------:|
-|      acme.sh       | [GitHub](https://api.github.com/repos/acmesh-official/acme.sh/releases/latest) | ⚠ Not Tested |
-|        apr         |                 [Apache](https://archive.apache.org/dist/apr/)                 | ⚠ Not Tested |
-|       bison        |                   [GNU.org](https://ftp.gnu.org/gnu/bison/)                    | ⚠ Not Tested |
-|       boost        |        [official](https://boostorg.jfrog.io/artifactory/main/release/)         | ⚠ Not Tested |
-|       cacert       |                 [curl.se](https://curl.se/docs/caextract.html)                 | ⚠ Not Tested |
-|      cphalcon      |                 [GitHub](https://github.com/phalcon/cphalcon)                  | ⚠ Not Tested |
-|       dbxcli       |                  [GitHub](https://github.com/dropbox/dbxcli)                   | ⚠ Not Tested |
-|        curl        |                      [curl.se](https://curl.se/download/)                      | ⚠ Not Tested |
-|      fail2ban      |                 [GitHub](https://github.com/fail2ban/fail2ban)                 | ⚠ Not Tested |
-|      freetype      |        [GNU.org](https://download.savannah.gnu.org/releases/freetype/)         | ⚠ Not Tested |
-|       gdrive       |                  [GitHub](https://github.com/glotlabs/gdrive)                  | ⚠ Not Tested |
-|     gperftools     |               [GitHub](https://github.com/gperftools/gperftools)               | ⚠ Not Tested |
-|        htop        |        [Fedora Project](https://src.fedoraproject.org/repo/pkgs/htop/)         | ⚠ Not Tested |
-|       httpd        |              [Apache.org](https://archive.apache.org/dist/httpd/)              | ⚠ Not Tested |
-|        icu         |                  [GitHub](https://github.com/unicode-org/icu)                  | ⚠ Not Tested |
-|    imagemagick     |                  [official](https://imagemagick.org/archive/)                  | ⚠ Not Tested |
-|      jemalloc      |                 [GitHub](https://github.com/jemalloc/jemalloc)                 | ⚠ Not Tested |
-|      libiconv      |                  [GNU.org](https://ftp.gnu.org/gnu/libiconv/)                  | ⚠ Not Tested |
-|  lua_nginx_module  |            [GitHub](https://github.com/openresty/lua-nginx-module)             | ⚠ Not Tested |
-|   lua-resty-core   |             [GitHub](https://github.com/openresty/lua-resty-core)              | ⚠ Not Tested |
-| lua-resty-lrucache |           [GitHub](https://github.com/openresty/lua-resty-lrucache)            | ⚠ Not Tested |
-|     lua-cjson      |               [GitHub](https://github.com/openresty/lua-cjson/)                | ⚠ Not Tested |
-|      luajit2       |                 [GitHub](https://github.com/openresty/luajit2)                 | ⚠ Not Tested |
-|       libzip       |                   [GitHub](https://github.com/nih-at/libzip)                   | ⚠ Not Tested |
-|     libsodium      |                [GitHub](https://github.com/jedisct1/libsodium)                 | ⚠ Not Tested |
-|     memcached      |                      [official](http://www.memcached.org)                      | ⚠ Not Tested |
-|       mysql        |                    [official](https://downloads.mysql.com)                     | ⚠ Not Tested |
-|      nghttp2       |                  [GitHub](https://github.com/nghttp2/nghttp2)                  | ⚠ Not Tested |
-|       nginx        |                 [official](https://nginx.org/en/download.html)                 | ⚠ Not Tested |
-|   ngx_devel_kit    |               [GitHub](https://github.com/vision5/ngx_devel_kit)               | ⚠ Not Tested |
-|     openresty      |                       [official](https://openresty.org)                        | ⚠ Not Tested |
-|      openssl       |                  [GitHub](https://github.com/openssl/openssl)                  | ⚠ Not Tested |
-|     oniguruma      |                  [GitHub](https://github.com/kkos/oniguruma)                   | ⚠ Not Tested |
-| phc-winner-argon2  |              [GitHub](https://github.com/P-H-C/phc-winner-argon2)              | ⚠ Not Tested |
-|        php         |                 [official](https://www.php.net/downloads.php)                  | ⚠ Not Tested |
-|     phpmyadmin     |               [official](https://www.phpmyadmin.net/downloads/)                | ⚠ Not Tested |
-|        pip         |     [Fedora Project](https://src.fedoraproject.org/repo/pkgs/python-pip/)      | ⚠ Not Tested |
-|     postgresql     |               [official](https://ftp.postgresql.org/pub/source/)               | ⚠ Not Tested |
-|     pure_ftpd      |     [official](https://ftp.pureftpd.org/public/public/pure-ftpd/releases/)     | ⚠ Not Tested |
-|       python       |                 [official](https://www.python.org/ftp/python/)                 | ⚠ Not Tested |
-|       redis        |                     [official](https://download.redis.io/)                     | ⚠ Not Tested |
-|     setuptools     |                  [GitHub](https://github.com/pypa/setuptools)                  | ⚠ Not Tested |
-|      tengine       |                  [GitHub](https://github.com/alibaba/tengine)                  | ⚠ Not Tested |
-|      webgrind      |                 [GitHub](https://github.com/jokkedk/webgrind)                  | ⚠ Not Tested |
-|       xcache       |                  [GitHub](https://github.com/lighttpd/xcache)                  | ⚠ Not Tested |
-|      libevent      |                 [GitHub](https://github.com/libevent/libevent)                 | ⚠ Not Tested |
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   OneinStack    │────▶│    FastAPI      │────▶│     Redis       │
+│    Scripts      │     │    Backend      │     │  (Redirect DB)  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                               │
+                               ▼
+                        ┌─────────────────┐
+                        │    Next.js      │
+                        │    Frontend     │
+                        └─────────────────┘
+```
 
-### PHP Plugins
+## 📦 Tech Stack
 
-| Package Name |                        Source                         |    Status    |
-|:------------:|:-----------------------------------------------------:|:------------:|
-|     APCU     |   [pecl.php.net](https://pecl.php.net/package/APCU)   | ⚠ Not Tested |
-|   gmagick    | [pecl.php.net](https://pecl.php.net/package/gmagick)  | ⚠ Not Tested |
-|   imagick    | [pecl.php.net](https://pecl.php.net/package/imagick)  | ⚠ Not Tested |
-|   memcache   | [pecl.php.net](https://pecl.php.net/package/memcache) | ⚠ Not Tested |
-|   mongodb    | [pecl.php.net](https://pecl.php.net/package/mongodb)  | ⚠ Not Tested |
-|    swoole    |  [pecl.php.net](https://pecl.php.net/package/swoole)  | ⚠ Not Tested |
-|     YAF      |   [pecl.php.net](https://pecl.php.net/package/YAF)    | ⚠ Not Tested |
-|    xdebug    |  [pecl.php.net](https://pecl.php.net/package/xdebug)  | ⚠ Not Tested |
-|    mongo     |  [pecl.php.net](https://pecl.php.net/package/mongo)   | ⚠ Not Tested |
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Backend | FastAPI | 0.115+ |
+| Frontend | Next.js (Turbopack) | 16.1.1 |
+| Database | SQLite | - |
+| Cache | Redis | 8.4 |
+| Runtime | Python | 3.14 |
+| ORM | SQLAlchemy | 2.x |
+| Validation | Pydantic | 2.x |
 
-### Misc
+## 🚀 Quick Start
 
-|       Package Name       |                Source                 |    Status    |
-|:------------------------:|:-------------------------------------:|:------------:|
-| fpm-race-condition.patch | https://bugs.php.net/bug.php?id=65398 | ⚠ Not Tested |
+### Prerequisites
 
+- Docker & Docker Compose
+- Git
 
-## Unsupported Packages
+### Deployment
 
-> [!IMPORTANT]  
-> Files listed in this table are not supported yet for one of the following reasons:
-> 1. Source not found
-> 2. File is modified based on original source
-> 
-> If you found any of these package can be included, please open an issue or pull request.
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/dalao-org/oneinstack-mirror-generator.git
+   cd oneinstack-mirror-generator
+   ```
 
-|                  File Name in Original Mirror                   |
-|:---------------------------------------------------------------:|
-| 0001-unix-ngx_user-Apply-fix-for-really-old-bug-in-glibc-.patch |
-|                          adoptium.key                           |
-|                  autoconf-2.69-12.2.noarch.rpm                  |
-|                          cos_client.py                          |
-|      debian_patches_disable_SSLv2_for_openssl_1_0_0.patch       |
-|                    libiconv-glibc-2.16.patch                    |
-|                    libmemcached-build.patch                     |
-|               libwebp-0.3.1-2.el6.remi.x86_64.rpm               |
-|                      mbedtls-2.6.0-gpl.tgz                      |
-|                      mbedtls-2.7.0-gpl.tgz                      |
-|                        mbedtls-2.7.1.tgz                        |
-|                     nginx-auto-cc-gcc.patch                     |
-|                       ngx_lua_waf.tar.gz                        |
-|                   pecl-memcache-4.0.4.tar.gz                    |
-|                     pecl-memcache-php7.tgz                      |
-|                     php-memcached-php7.tgz                      |
-|                        phpredis-php7.tgz                        |
-|                               rdr                               |
+2. Configure environment files:
+   ```bash
+   cp backend/.env.example backend/.env
+   cp frontend/.env.example frontend/.env
+   ```
 
-## Removed Packages
+3. Edit `backend/.env` with your settings:
+   ```env
+   SECRET_KEY=your-super-secret-key
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD=your-secure-password
+   ```
 
-|    Package Name    |                              Reason                               |
-|:------------------:|:-----------------------------------------------------------------:|
-|    certbot-auto    |       Does not need any more; found direct source of cacert       |
-|  ZendGuardLoader   |                             outdated                              |
-| zend-loader-php5.5 |                             outdated                              |
-| zend-loader-php5.6 |                             outdated                              |
-| zendopcache-7.0.5  |                             outdated                              |
-|   Percona-Server   | Supported versions are outdated; Oneinstack needs to update first |
-|   GraphicsMagick   |                             outdated                              |
-|       alisql       |                     Source does not maintain                      |
-|      mongodb       | Supported versions are outdated; Oneinstack needs to update first |
+4. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
 
+5. Access the dashboard at `http://localhost:3000`
+
+## 📁 Project Structure
+
+```
+oneinstack-mirror-generator/
+├── backend/                    # FastAPI backend
+│   ├── app/
+│   │   ├── main.py            # Application entry point
+│   │   ├── config.py          # Configuration management
+│   │   ├── database.py        # SQLite connection
+│   │   ├── redis_client.py    # Redis operations
+│   │   ├── models/            # SQLAlchemy models
+│   │   ├── schemas/           # Pydantic schemas
+│   │   ├── routers/           # API endpoints
+│   │   ├── services/          # Business logic
+│   │   ├── scrapers/          # Package scrapers
+│   │   └── scheduler/         # Background tasks
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/                   # Next.js frontend
+│   ├── app/                   # App Router pages
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml
+└── README.md
+```
+
+## 🔌 API Endpoints
+
+### Public Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check |
+| GET | `/src/{filename}` | Redirect to download URL |
+| GET | `/suggest_versions.txt` | Version suggestions |
+
+### Protected Endpoints (require JWT)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/login` | Admin login |
+| GET | `/api/settings` | Get all settings |
+| PUT | `/api/settings/{key}` | Update setting |
+| GET | `/api/resources` | List all resources |
+| POST | `/api/scraper/run` | Trigger full scrape |
+| GET | `/api/scraper/logs` | View scrape logs |
+
+## 🔧 Adding a New Scraper
+
+1. Create a new file in `backend/app/scrapers/`:
+
+   ```python
+   # backend/app/scrapers/mypackage.py
+   from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
+   from .registry import registry
+   
+   @registry.register("mypackage")
+   class MyPackageScraper(BaseScraper):
+       async def scrape(self) -> ScrapeResult:
+           result = ScrapeResult(scraper_name=self.name)
+           
+           # Your scraping logic here
+           response = await self.http_client.get("https://example.com")
+           # Parse response and add resources
+           
+           result.resources.append(Resource(
+               file_name="mypackage-1.0.0.tar.gz",
+               url="https://example.com/download/mypackage-1.0.0.tar.gz",
+               version="1.0.0",
+           ))
+           
+           result.success = True
+           return result
+   ```
+
+2. Import it in `backend/app/scrapers/__init__.py`:
+   ```python
+   from . import mypackage
+   ```
+
+## ⚙️ Configuration
+
+### Backend Settings
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `github_api_token` | string | "" | GitHub API token for rate limits |
+| `php_accepted_versions` | json | ["8.1", "8.2", "8.3", "8.4"] | PHP versions to track |
+| `scrape_interval_hours` | int | 6 | Hours between auto-scrapes |
+| `enable_auto_scrape` | bool | true | Enable scheduled scraping |
+
+## 🔒 Security
+
+- JWT tokens expire after 24 hours
+- Passwords are hashed with bcrypt
+- API docs are disabled in production
+- CORS is configured per environment
+
+## 📊 Monitoring
+
+- Health check: `GET /health`
+- Scrape logs: Available in dashboard
+- Scheduler status: Available via API
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add your scraper or improvement
+4. Submit a pull request
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Credits
+
+- Original project by [dalao-org](https://github.com/dalao-org)
+- v2.0 refactor for improved reliability and maintainability
