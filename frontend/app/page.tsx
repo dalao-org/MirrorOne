@@ -290,7 +290,7 @@ export default function Home() {
                         />
                     </div>
                     <p style={{ color: colors.textMuted }}>
-                        Trusted mirror for OneinStack software packages
+                        Your trusted mirror for your Linux web development essentials
                     </p>
                 </header>
 
