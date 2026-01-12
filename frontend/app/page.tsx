@@ -179,24 +179,74 @@ export default function Home() {
         });
     };
 
-    const sourceLabels: Record<string, string> = {
-        nginx: "🌐 Nginx",
-        mysql: "🐬 MySQL",
-        php: "🐘 PHP",
-        python: "🐍 Python",
-        mariadb: "🗄️ MariaDB",
-        redis: "🔴 Redis",
-        postgresql: "🐘 PostgreSQL",
-        httpd: "🌐 Apache HTTPD",
-        apr: "📦 APR",
-        openssl: "🔐 OpenSSL",
-        curl: "📡 cURL",
-        memcached: "💾 Memcached",
-        pip: "📦 pip",
-        imagemagick: "🖼️ ImageMagick",
-        phpmyadmin: "📊 phpMyAdmin",
-        openresty: "🌐 OpenResty",
-        tengine: "🌐 Tengine",
+    const logoMap: Record<string, string> = {
+        nginx: "/packages/nginx.svg",
+        mysql: "/packages/mysql.svg",
+        php: "/packages/php.svg",
+        python: "/packages/python.svg",
+        mariadb: "/packages/MariaDB.svg",
+        redis: "/packages/redis.svg",
+        postgresql: "/packages/postgresql.svg",
+        httpd: "/packages/httpd.svg",
+        openssl: "/packages/openssl.svg",
+        curl: "/packages/curl.svg",
+        memcached: "/packages/memcached.svg",
+        pip: "/packages/pip.svg",
+        imagemagick: "/packages/ImageMagick.svg",
+        phpmyadmin: "/packages/PhpMyAdmin.svg",
+        openresty: "/packages/openresty.svg",
+        "pure-ftpd": "/packages/Pure-ftpd.webp",
+        fail2ban: "/packages/fail2ban.webp",
+        htop: "/packages/htop.svg",
+        php_patches: "/packages/php.svg",
+        php_plugins: "/packages/php.svg",
+        misc_github: "/github.webp",
+    };
+
+    const sourceNames: Record<string, string> = {
+        nginx: "Nginx",
+        mysql: "MySQL",
+        php: "PHP",
+        python: "Python",
+        mariadb: "MariaDB",
+        redis: "Redis",
+        postgresql: "PostgreSQL",
+        httpd: "Apache HTTPD",
+        apr: "APR",
+        openssl: "OpenSSL",
+        curl: "cURL",
+        memcached: "Memcached",
+        pip: "pip",
+        imagemagick: "ImageMagick",
+        phpmyadmin: "phpMyAdmin",
+        openresty: "OpenResty",
+        tengine: "Tengine",
+        "pure-ftpd": "Pure-FTPd",
+        fail2ban: "Fail2Ban",
+        htop: "htop",
+        php_patches: "PHP Patches",
+        php_plugins: "PHP Plugins",
+        misc_github: "GitHub Misc",
+    };
+
+    const sourceEmojis: Record<string, string> = {
+        nginx: "🌐",
+        mysql: "🐬",
+        php: "🐘",
+        python: "🐍",
+        mariadb: "🗄️",
+        redis: "🔴",
+        postgresql: "🐘",
+        httpd: "🌐",
+        apr: "📦",
+        openssl: "🔐",
+        curl: "📡",
+        memcached: "💾",
+        pip: "📦",
+        imagemagick: "🖼️",
+        phpmyadmin: "📊",
+        openresty: "🌐",
+        tengine: "🌐",
     };
 
     const isHealthy = health?.status === "healthy";
@@ -490,9 +540,26 @@ export default function Home() {
                                                 fontSize: "1rem",
                                             }}
                                         >
-                                            <span style={{ fontWeight: 600 }}>
-                                                {sourceLabels[source] || `📦 ${source}`}
-                                            </span>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                                                {logoMap[source] ? (
+                                                    <img
+                                                        src={logoMap[source]}
+                                                        alt={source}
+                                                        style={{
+                                                            width: "24px",
+                                                            height: "24px",
+                                                            objectFit: "contain"
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span style={{ fontSize: "1.25rem" }}>
+                                                        {sourceEmojis[source] || "📦"}
+                                                    </span>
+                                                )}
+                                                <span style={{ fontWeight: 600 }}>
+                                                    {sourceNames[source] || source}
+                                                </span>
+                                            </div>
                                             <span style={{ color: colors.textMuted }}>
                                                 {items.length} files {expandedSources.has(source) ? "▲" : "▼"}
                                             </span>
