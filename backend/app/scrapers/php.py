@@ -15,7 +15,7 @@ class PHPScraper(BaseScraper):
         result = ScrapeResult(scraper_name=self.name)
         
         # Get accepted versions from settings
-        accepted_versions = self.settings.get("php_accepted_versions", ["8.1", "8.2", "8.3", "8.4"])
+        accepted_versions = self.settings.get("php_accepted_versions", ["8.1", "8.2", "8.3", "8.4", "8.5"])
         
         # Scrape current downloads page
         current_resources = await self._scrape_current_downloads()

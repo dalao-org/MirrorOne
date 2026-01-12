@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 VERSIONS_API = "https://downloads.mariadb.org/rest-api/mariadb/"
 VERSION_RESOURCE_API = "https://downloads.mariadb.org/rest-api/mariadb/{version}/"
-DEFAULT_ACCEPTED_VERSIONS = ["5.5", "10.4", "10.5", "10.11", "11.4"]
+DEFAULT_ACCEPTED_VERSIONS = ["5.5", "10.4", "10.5", "10.11", "11.4", "11.5", "11.6", "11.7", "11.8", "12.0", "12.1", "12.2", "12.3"]
 
 
 @registry.register("mariadb")

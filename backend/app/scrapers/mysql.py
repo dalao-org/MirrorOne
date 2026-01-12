@@ -9,7 +9,7 @@ from .registry import registry
 
 # Default values for settings (used as fallbacks)
 DEFAULT_BLACKLIST = ["arm", "32-bit", "test", "minimal", "ia-64", "debug"]
-DEFAULT_ACCEPTED_VERSIONS = ["5.5", "5.6", "5.7", "8.0", "8.4", "9.0", "9.1"]
+DEFAULT_ACCEPTED_VERSIONS = ["5.5", "5.6", "5.7", "8.0", "8.4", "9.0", "9.1", "9.2", "9.3", "9.4", "9.5"]
 
 
 @registry.register("mysql")
@@ -56,48 +56,75 @@ class MySQLScraper(BaseScraper):
         return result
     
     async def _parse_mysql_table(self, url: str) -> Resource | None:
-        """Parse MySQL download table to extract package info."""
+        """Parse MySQL download table to extract package info.
+        
+        MySQL website structure:
+        - Each download entry spans TWO rows:
+          - Row 1: Package description, date, size, Download button
+          - Row 2: Filename (in parentheses) and MD5 hash
+        - Modern versions use .tar.xz, older versions use .tar.gz
+        """
+        import re
+        
         try:
             response = await self.http_client.get(url, headers=self.get_headers())
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, "html.parser")
-            table = soup.find("table")
-            if not table:
+            
+            # Find all download links by href pattern (more reliable than text matching)
+            download_links = soup.find_all("a", href=re.compile(r"/get/.*|/archives/get/.*"))
+            if not download_links:
                 return None
             
-            rows = table.find_all("tr")
-            rows = [row for row in rows if len(row.find_all("td")) == 4]
+            blacklist = self.settings.get("mysql_blacklist", DEFAULT_BLACKLIST)
             
-            for row in rows:
-                td_elements = row.find_all("td")
-                package_name = td_elements[0].text
-                
-                blacklist = self.settings.get("mysql_blacklist", DEFAULT_BLACKLIST)
-                if any(kw in package_name.lower() for kw in blacklist):
-                    continue
-                
-                link = td_elements[3].find("a")
-                if not link:
-                    continue
+            for link in download_links:
                 download_url = link.get("href", "")
                 
-                next_row = row.find_next_sibling("tr")
-                if not next_row:
-                    continue
-                next_tds = next_row.find_all("td")
-                if not next_tds:
-                    continue
-                
-                file_name = next_tds[0].text.replace("(", "").replace(")", "").strip()
-                if ".tar.gz" not in file_name:
+                # Extract filename directly from URL (most reliable method)
+                # URL format: /archives/get/p/23/file/mysql-8.0.40-linux-glibc2.28-x86_64.tar.xz
+                url_parts = download_url.split("/")
+                if not url_parts:
                     continue
                 
-                md5_elem = next_tds[1].find("code", class_="md5") if len(next_tds) > 1 else None
-                md5 = md5_elem.text if md5_elem else None
+                file_name = url_parts[-1]
                 
+                # Must be a tar archive
+                if not re.search(r'\.tar(?:\.gz|\.xz)?$', file_name):
+                    continue
+                
+                # Apply blacklist filter on filename
+                if any(kw in file_name.lower() for kw in blacklist):
+                    continue
+                
+                # Prefer 64-bit x86 packages
+                if "x86_64" not in file_name and "x86-64" not in file_name:
+                    # Check the row text for 64-bit indication
+                    row = link.find_parent("tr")
+                    if row:
+                        row_text = row.get_text().lower()
+                        # Match various formats: "64-bit", "64bit", "x86, 64-bit"
+                        if "64-bit" not in row_text and "64bit" not in row_text:
+                            continue
+                
+                # Build full download URL
                 if download_url.startswith("/"):
-                    download_url = "https://downloads.mysql.com" + download_url
+                    if "dev.mysql.com" in url:
+                        download_url = "https://dev.mysql.com" + download_url
+                    else:
+                        download_url = "https://downloads.mysql.com" + download_url
+                
+                # Try to extract MD5 from the next row (sibling)
+                md5 = None
+                row = link.find_parent("tr")
+                if row:
+                    next_row = row.find_next_sibling("tr")
+                    if next_row:
+                        next_text = next_row.get_text()
+                        md5_match = re.search(r'MD5:\s*([a-fA-F0-9]{32})', next_text)
+                        if md5_match:
+                            md5 = md5_match.group(1)
                 
                 return Resource(
                     file_name=file_name,
@@ -111,7 +138,10 @@ class MySQLScraper(BaseScraper):
         return None
     
     async def _get_archive_versions(self) -> list[Resource]:
-        """Get older MySQL versions from archives."""
+        """Get older MySQL versions from archives.
+        
+        For each accepted major version (e.g., 8.0, 8.4), fetches the latest 3 sub-versions.
+        """
         resources = []
         
         try:
@@ -120,19 +150,41 @@ class MySQLScraper(BaseScraper):
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, "html.parser")
-            label = soup.find("label", string="Product Version:")
-            if not label or not label.parent:
+            
+            # Find version select directly by ID (more reliable than label matching)
+            version_select = soup.find("select", id="version")
+            if not version_select:
                 return resources
             
-            options = label.parent.find_all("option")
+            options = version_select.find_all("option")
             accepted_versions = self.settings.get("mysql_accepted_versions", DEFAULT_ACCEPTED_VERSIONS)
-            versions = [
-                opt.text for opt in options
-                if any(opt.text.startswith(av) for av in accepted_versions)
-                and not any(c.isalpha() for c in opt.text)
+            
+            # Get all matching versions
+            all_versions = [
+                opt.get("value", opt.text).strip() for opt in options
+                if any(opt.text.strip().startswith(av) for av in accepted_versions)
+                and not any(c.isalpha() for c in opt.text.strip())
             ]
             
-            for version in versions[:10]:  # Limit to 10 archive versions
+            # Group versions by major.minor and take latest 3 for each
+            version_groups: dict[str, list[str]] = {}
+            for version in all_versions:
+                parts = version.split(".")
+                if len(parts) >= 2:
+                    major_minor = f"{parts[0]}.{parts[1]}"
+                    if major_minor not in version_groups:
+                        version_groups[major_minor] = []
+                    version_groups[major_minor].append(version)
+            
+            # Select top 3 sub-versions for each major version
+            selected_versions = []
+            for major_minor in accepted_versions:
+                if major_minor in version_groups:
+                    # Versions should already be sorted descending from the dropdown
+                    # Take the first 3 (latest)
+                    selected_versions.extend(version_groups[major_minor][:3])
+            
+            for version in selected_versions:
                 pkg_url = f"https://downloads.mysql.com/archives/community/?tpl=platform&os=2&version={version}"
                 resource = await self._parse_mysql_table(pkg_url)
                 if resource:

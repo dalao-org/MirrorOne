@@ -8,7 +8,7 @@ from .registry import registry
 
 
 # Default values for settings (used as fallbacks)
-DEFAULT_ACCEPTED_VERSIONS = ["2.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+DEFAULT_ACCEPTED_VERSIONS = ["2.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
 
 @registry.register("python")
