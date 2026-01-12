@@ -46,8 +46,9 @@ export default function DashboardPage() {
         const token = localStorage.getItem("access_token");
         if (!token) return;
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const wsUrl = apiUrl.replace(/^http/, "ws") + `/api/scraper/ws/logs?token=${token}`;
+        // Use current page's host for WebSocket connection
+        const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${wsProtocol}//${window.location.host}/api/scraper/ws/logs?token=${token}`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -110,8 +111,8 @@ export default function DashboardPage() {
 
     const fetchStatus = async () => {
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/scraper/status`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/scraper/status", {
                 headers: getAuthHeaders(),
             });
 
@@ -150,8 +151,8 @@ export default function DashboardPage() {
                 connectWebSocket();
             }
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/scraper/run`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/scraper/run", {
                 method: "POST",
                 headers: getAuthHeaders(),
             });
@@ -173,8 +174,8 @@ export default function DashboardPage() {
                 connectWebSocket();
             }
 
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/scraper/recache?overwrite=${overwrite}&max_concurrent=5`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch(`/api/scraper/recache?overwrite=${overwrite}&max_concurrent=5`, {
                 method: "POST",
                 headers: getAuthHeaders(),
             });

@@ -43,8 +43,8 @@ export default function ResourcesPage() {
 
     const fetchResources = async () => {
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/resources`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/resources", {
                 headers: getAuthHeaders(),
             });
 

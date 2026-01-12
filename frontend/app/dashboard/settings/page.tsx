@@ -42,8 +42,8 @@ export default function SettingsPage() {
 
     const fetchSettings = async () => {
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/settings`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/settings", {
                 headers: getAuthHeaders(),
             });
 
@@ -78,8 +78,8 @@ export default function SettingsPage() {
         setSaving(key);
         setSaveSuccess(null);
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/settings/${key}`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch(`/api/settings/${key}`, {
                 method: "PUT",
                 headers: getAuthHeaders(),
                 body: JSON.stringify({ value: editedSettings[key] }),

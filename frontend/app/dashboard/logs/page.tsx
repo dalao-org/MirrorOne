@@ -44,8 +44,8 @@ export default function LogsPage() {
 
     const fetchLogs = async () => {
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/scraper/logs?limit=100`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/scraper/logs?limit=100", {
                 headers: getAuthHeaders(),
             });
 

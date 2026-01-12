@@ -133,13 +133,12 @@ export default function Home() {
 
     useEffect(() => {
         const fetchData = async () => {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
+            // Use relative URLs - Next.js rewrites will proxy to backend
 
             try {
                 const [healthRes, resourcesRes] = await Promise.all([
-                    fetch(`${apiUrl}/health`, { cache: "no-store" }),
-                    fetch(`${apiUrl}/api/resources/public`, { cache: "no-store" }),
+                    fetch("/health", { cache: "no-store" }),
+                    fetch("/api/resources/public", { cache: "no-store" }),
                 ]);
 
                 if (healthRes.ok) {
