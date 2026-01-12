@@ -7,7 +7,7 @@ import httpx
 
 from .base import Resource, VersionMeta
 
-BLACKLIST_WORDS = ["rc", "beta", "alpha", "dev", "preview"]
+DEFAULT_BLACKLIST = ["rc", "beta", "alpha", "dev", "preview"]
 
 
 async def get_github_releases(
@@ -84,11 +84,18 @@ async def get_github_tags(
     return tag_names
 
 
-def filter_blacklist(items: list[str]) -> list[str]:
-    """Filter out items containing blacklist words."""
+def filter_blacklist(items: list[str], blacklist: list[str] | None = None) -> list[str]:
+    """Filter out items containing blacklist words.
+    
+    Args:
+        items: List of items to filter
+        blacklist: Optional custom blacklist, defaults to DEFAULT_BLACKLIST
+    """
+    if blacklist is None:
+        blacklist = DEFAULT_BLACKLIST
     return [
         item for item in items
-        if not any(word in item.lower() for word in BLACKLIST_WORDS)
+        if not any(word in item.lower() for word in blacklist)
     ]
 
 

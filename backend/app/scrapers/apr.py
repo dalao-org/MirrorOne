@@ -7,7 +7,7 @@ from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 
 
-BLACK_LIST_WORDS = ["alpha", "beta", "deps", "rc", "win32"]
+DEFAULT_BLACKLIST = ["alpha", "beta", "deps", "rc", "win32"]
 
 
 @registry.register("apr")
@@ -24,9 +24,10 @@ class AprScraper(BaseScraper):
         soup = BeautifulSoup(response.content, "html.parser")
         
         max_versions = self.settings.get("apr_max_versions", 3)
+        blacklist = self.settings.get("apr_blacklist", DEFAULT_BLACKLIST)
         
         # Get APR versions
-        apr_versions = self._extract_versions(soup, "apr-", ["apr-util", "apr-iconv"])
+        apr_versions = self._extract_versions(soup, "apr-", ["apr-util", "apr-iconv"], blacklist)
         apr_versions = apr_versions[:max_versions]
         
         for version in apr_versions:
@@ -42,7 +43,7 @@ class AprScraper(BaseScraper):
             )
         
         # Get APR-util versions
-        apr_util_versions = self._extract_versions(soup, "apr-util-", [])
+        apr_util_versions = self._extract_versions(soup, "apr-util-", [], blacklist)
         apr_util_versions = apr_util_versions[:max_versions]
         
         for version in apr_util_versions:
@@ -60,7 +61,7 @@ class AprScraper(BaseScraper):
         result.success = True
         return result
     
-    def _extract_versions(self, soup, prefix: str, exclude: list[str]) -> list[str]:
+    def _extract_versions(self, soup, prefix: str, exclude: list[str], blacklist: list[str]) -> list[str]:
         """Extract versions from archive page."""
         versions = []
         
@@ -74,7 +75,7 @@ class AprScraper(BaseScraper):
                 continue
             
             # Check blacklist
-            if any(word in text.lower() for word in BLACK_LIST_WORDS):
+            if any(word in text.lower() for word in blacklist):
                 continue
             
             # Extract version

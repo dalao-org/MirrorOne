@@ -12,6 +12,18 @@ from app.models.setting import Setting
 # Default settings to initialize
 DEFAULT_SETTINGS = [
     {
+        "key": "mirror_type",
+        "value": "redirect",
+        "value_type": "string",
+        "description": "Mirror mode: 'redirect' (use original URLs) or 'cache' (download and serve locally)",
+    },
+    {
+        "key": "cache_path",
+        "value": "./cache",
+        "value_type": "string",
+        "description": "Path to cache directory for downloaded files",
+    },
+    {
         "key": "github_api_token",
         "value": "",
         "value_type": "string",
@@ -40,6 +52,68 @@ DEFAULT_SETTINGS = [
         "value": "true",
         "value_type": "bool",
         "description": "Enable automatic scheduled scraping",
+    },
+    # MySQL settings
+    {
+        "key": "mysql_accepted_versions",
+        "value": '["5.5", "5.6", "5.7", "8.0", "8.4", "9.0", "9.1"]',
+        "value_type": "json",
+        "description": "List of MySQL versions to track",
+    },
+    {
+        "key": "mysql_blacklist",
+        "value": '["arm", "32-bit", "test", "minimal", "ia-64", "debug"]',
+        "value_type": "json",
+        "description": "MySQL package blacklist keywords",
+    },
+    # Python settings
+    {
+        "key": "python_accepted_versions",
+        "value": '["2.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]',
+        "value_type": "json",
+        "description": "List of Python versions to track",
+    },
+    # MariaDB settings
+    {
+        "key": "mariadb_accepted_versions",
+        "value": '["5.5", "10.4", "10.5", "10.11", "11.4"]',
+        "value_type": "json",
+        "description": "List of MariaDB versions to track",
+    },
+    # Apache HTTPD settings
+    {
+        "key": "httpd_blacklist",
+        "value": '["alpha", "beta", "deps", "rc"]',
+        "value_type": "json",
+        "description": "Apache HTTPD version blacklist",
+    },
+    # APR settings
+    {
+        "key": "apr_blacklist",
+        "value": '["alpha", "beta", "deps", "rc", "win32"]',
+        "value_type": "json",
+        "description": "APR version blacklist",
+    },
+    # pip/setuptools settings
+    {
+        "key": "pip_blacklist",
+        "value": '["test", "b1", "b2", "b3", "a1", "a2", "rc"]',
+        "value_type": "json",
+        "description": "pip/setuptools version blacklist",
+    },
+    # PHP plugins settings
+    {
+        "key": "php_plugins_blacklist",
+        "value": '["alpha", "beta", "rc", "test"]',
+        "value_type": "json",
+        "description": "PHP plugins version blacklist",
+    },
+    # GitHub settings
+    {
+        "key": "github_blacklist",
+        "value": '["rc", "beta", "alpha", "dev", "preview"]',
+        "value_type": "json",
+        "description": "GitHub releases/tags blacklist",
     },
 ]
 

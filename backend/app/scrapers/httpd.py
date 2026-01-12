@@ -8,7 +8,7 @@ from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 
 
-BLACK_LIST_WORDS = ["alpha", "beta", "deps", "rc"]
+DEFAULT_BLACKLIST = ["alpha", "beta", "deps", "rc"]
 
 
 @registry.register("httpd")
@@ -17,6 +17,8 @@ class HttpdScraper(BaseScraper):
     
     async def scrape(self) -> ScrapeResult:
         result = ScrapeResult(scraper_name=self.name)
+        
+        blacklist = self.settings.get("httpd_blacklist", DEFAULT_BLACKLIST)
         
         url = "https://archive.apache.org/dist/httpd/"
         response = await self.http_client.get(url, headers=self.get_headers())
@@ -31,7 +33,7 @@ class HttpdScraper(BaseScraper):
             text = link.text
             if text.startswith("httpd-") and text.endswith(".tar.gz"):
                 # Skip blacklisted versions
-                if any(word in text.lower() for word in BLACK_LIST_WORDS):
+                if any(word in text.lower() for word in blacklist):
                     continue
                 
                 version = text.replace(".tar.gz", "").replace("httpd-", "")

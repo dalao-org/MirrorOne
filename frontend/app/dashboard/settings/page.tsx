@@ -125,6 +125,28 @@ export default function SettingsPage() {
     const renderSettingInput = (setting: Setting) => {
         const value = editedSettings[setting.key];
 
+        // Special case: mirror_type dropdown
+        if (setting.key === "mirror_type") {
+            return (
+                <select
+                    value={value as string}
+                    onChange={(e) => handleValueChange(setting.key, e.target.value)}
+                    style={{
+                        background: "#1e293b",
+                        border: "1px solid rgba(99,102,241,0.3)",
+                        borderRadius: "8px",
+                        padding: "0.5rem 0.75rem",
+                        color: "#e2e8f0",
+                        fontSize: "0.9rem",
+                        cursor: "pointer",
+                    }}
+                >
+                    <option value="redirect">🔗 Redirect (use original URLs)</option>
+                    <option value="cache">💾 Cache (download and serve locally)</option>
+                </select>
+            );
+        }
+
         switch (setting.value_type) {
             case "bool":
                 return (
@@ -324,6 +346,40 @@ export default function SettingsPage() {
         }
     };
 
+    // Group settings by module prefix
+    const getSettingGroup = (key: string): string => {
+        const prefixes = ["mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "github"];
+        for (const prefix of prefixes) {
+            if (key.startsWith(prefix + "_")) {
+                return prefix;
+            }
+        }
+        return "general";
+    };
+
+    const groupLabels: Record<string, string> = {
+        general: "🔧 General Settings",
+        mysql: "🐬 MySQL",
+        python: "🐍 Python",
+        mariadb: "🗄️ MariaDB",
+        httpd: "🌐 Apache HTTPD",
+        apr: "📦 APR",
+        pip: "📦 pip/setuptools",
+        php: "🐘 PHP",
+        github: "🐙 GitHub",
+    };
+
+    const groupedSettings = settings.reduce((acc, setting) => {
+        const group = getSettingGroup(setting.key);
+        if (!acc[group]) acc[group] = [];
+        acc[group].push(setting);
+        return acc;
+    }, {} as Record<string, Setting[]>);
+
+    // Define group order
+    const groupOrder = ["general", "mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "github"];
+    const sortedGroups = groupOrder.filter(g => groupedSettings[g]?.length > 0);
+
     if (loading) {
         return <main className="container"><p>Loading...</p></main>;
     }
@@ -349,84 +405,99 @@ export default function SettingsPage() {
                 </div>
             )}
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {settings.map((setting) => (
-                    <div
-                        key={setting.key}
-                        className="card"
-                        style={{
-                            background: "linear-gradient(135deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.9) 100%)",
-                            border: isModified(setting)
-                                ? "1px solid rgba(234,179,8,0.5)"
-                                : "1px solid rgba(99,102,241,0.2)",
-                        }}
-                    >
-                        <div style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "flex-start",
-                            gap: "1rem",
+            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+                {sortedGroups.map((group) => (
+                    <div key={group}>
+                        <h2 style={{
+                            color: "#e2e8f0",
+                            fontSize: "1.25rem",
                             marginBottom: "1rem",
+                            paddingBottom: "0.5rem",
+                            borderBottom: "1px solid rgba(99,102,241,0.3)",
                         }}>
-                            <div>
-                                <h3 style={{
-                                    marginBottom: "0.25rem",
-                                    color: "#f1f5f9",
-                                    fontFamily: "'JetBrains Mono', monospace",
-                                    fontSize: "1rem",
-                                }}>
-                                    {setting.key}
-                                </h3>
-                                {setting.description && (
-                                    <p style={{
-                                        color: "#f59e0b",
-                                        fontSize: "0.875rem",
-                                        margin: 0,
+                            {groupLabels[group] || group}
+                        </h2>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                            {groupedSettings[group].map((setting) => (
+                                <div
+                                    key={setting.key}
+                                    className="card"
+                                    style={{
+                                        background: "linear-gradient(135deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.9) 100%)",
+                                        border: isModified(setting)
+                                            ? "1px solid rgba(234,179,8,0.5)"
+                                            : "1px solid rgba(99,102,241,0.2)",
+                                    }}
+                                >
+                                    <div style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "flex-start",
+                                        gap: "1rem",
+                                        marginBottom: "1rem",
                                     }}>
-                                        {setting.description}
-                                    </p>
-                                )}
-                            </div>
-                            <button
-                                onClick={() => saveSetting(setting.key)}
-                                disabled={saving === setting.key || !isModified(setting)}
-                                className="btn"
-                                style={{
-                                    background: saveSuccess === setting.key
-                                        ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
-                                        : isModified(setting)
-                                            ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                                            : "linear-gradient(135deg, #475569 0%, #334155 100%)",
-                                    border: isModified(setting)
-                                        ? "1px solid #f59e0b"
-                                        : "1px solid #64748b",
-                                    padding: "0.375rem 1rem",
-                                    fontSize: "0.875rem",
-                                    opacity: saving === setting.key ? 0.7 : 1,
-                                    cursor: isModified(setting) ? "pointer" : "default",
-                                    minWidth: "80px",
-                                    color: isModified(setting) ? "#fff" : "#cbd5e1",
-                                }}
-                            >
-                                {saving === setting.key
-                                    ? "Saving..."
-                                    : saveSuccess === setting.key
-                                        ? "✓ Saved"
-                                        : "Save"}
-                            </button>
-                        </div>
-                        <div>
-                            {renderSettingInput(setting)}
-                        </div>
-                        <div style={{
-                            marginTop: "0.75rem",
-                            fontSize: "0.75rem",
-                            color: "#64748b",
-                            display: "flex",
-                            justifyContent: "space-between",
-                        }}>
-                            <span>Type: {setting.value_type}</span>
-                            <span>Updated: {new Date(setting.updated_at).toLocaleString()}</span>
+                                        <div>
+                                            <h3 style={{
+                                                marginBottom: "0.25rem",
+                                                color: "#f1f5f9",
+                                                fontFamily: "'JetBrains Mono', monospace",
+                                                fontSize: "1rem",
+                                            }}>
+                                                {setting.key}
+                                            </h3>
+                                            {setting.description && (
+                                                <p style={{
+                                                    color: "#f59e0b",
+                                                    fontSize: "0.875rem",
+                                                    margin: 0,
+                                                }}>
+                                                    {setting.description}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => saveSetting(setting.key)}
+                                            disabled={saving === setting.key || !isModified(setting)}
+                                            className="btn"
+                                            style={{
+                                                background: saveSuccess === setting.key
+                                                    ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
+                                                    : isModified(setting)
+                                                        ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                                                        : "linear-gradient(135deg, #475569 0%, #334155 100%)",
+                                                border: isModified(setting)
+                                                    ? "1px solid #f59e0b"
+                                                    : "1px solid #64748b",
+                                                padding: "0.375rem 1rem",
+                                                fontSize: "0.875rem",
+                                                opacity: saving === setting.key ? 0.7 : 1,
+                                                cursor: isModified(setting) ? "pointer" : "default",
+                                                minWidth: "80px",
+                                                color: isModified(setting) ? "#fff" : "#cbd5e1",
+                                            }}
+                                        >
+                                            {saving === setting.key
+                                                ? "Saving..."
+                                                : saveSuccess === setting.key
+                                                    ? "✓ Saved"
+                                                    : "Save"}
+                                        </button>
+                                    </div>
+                                    <div>
+                                        {renderSettingInput(setting)}
+                                    </div>
+                                    <div style={{
+                                        marginTop: "0.75rem",
+                                        fontSize: "0.75rem",
+                                        color: "#64748b",
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                    }}>
+                                        <span>Type: {setting.value_type}</span>
+                                        <span>Updated: {new Date(setting.updated_at).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 ))}
@@ -434,3 +505,4 @@ export default function SettingsPage() {
         </main>
     );
 }
+

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 VERSIONS_API = "https://downloads.mariadb.org/rest-api/mariadb/"
 VERSION_RESOURCE_API = "https://downloads.mariadb.org/rest-api/mariadb/{version}/"
-ONEINSTACK_COMPATIBLE_VERSIONS = ["5.5", "10.4", "10.5", "10.11", "11.4"]
+DEFAULT_ACCEPTED_VERSIONS = ["5.5", "10.4", "10.5", "10.11", "11.4"]
 
 
 @registry.register("mariadb")
@@ -21,6 +21,7 @@ class MariaDBScraper(BaseScraper):
         result = ScrapeResult(scraper_name=self.name)
         
         max_per_branch = self.settings.get("mariadb_max_per_branch", 3)
+        accepted_versions = self.settings.get("mariadb_accepted_versions", DEFAULT_ACCEPTED_VERSIONS)
         
         try:
             # Get available major versions
@@ -35,8 +36,8 @@ class MariaDBScraper(BaseScraper):
                 and b.get("release_support_type") == "Long Term Support"
             ]
             
-            # Combine with OneinStack compatible versions
-            all_branches = list(set(ONEINSTACK_COMPATIBLE_VERSIONS + live_branches))
+            # Combine with accepted versions from settings
+            all_branches = list(set(accepted_versions + live_branches))
             all_branches.sort(reverse=True)
             
             for branch in all_branches:

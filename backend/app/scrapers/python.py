@@ -7,7 +7,8 @@ from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 
 
-ALLOWED_VERSIONS = ["2.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+# Default values for settings (used as fallbacks)
+DEFAULT_ACCEPTED_VERSIONS = ["2.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
 
 
 @registry.register("python")
@@ -27,15 +28,18 @@ class PythonScraper(BaseScraper):
             result.error_message = "Could not find version list"
             return result
         
+        # Get accepted versions from settings
+        accepted_versions = self.settings.get("python_accepted_versions", DEFAULT_ACCEPTED_VERSIONS)
+        
         # Collect all versions
         all_versions = []
         for link in pre.find_all("a"):
             version = link.text.strip().rstrip("/")
-            if any(version.startswith(allowed) for allowed in ALLOWED_VERSIONS):
+            if any(version.startswith(allowed) for allowed in accepted_versions):
                 all_versions.append(version)
         
         # Get latest 3 revisions per minor version
-        for minor in ALLOWED_VERSIONS:
+        for minor in accepted_versions:
             minor_versions = [v for v in all_versions if v.startswith(minor)]
             
             # Filter valid versions with revision number
@@ -61,6 +65,12 @@ class PythonScraper(BaseScraper):
                     url=f"https://www.python.org/ftp/python/{version}/Python-{version}.tgz",
                     version=version,
                 ))
+            
+            # Generate version meta for this minor version (e.g., python313_ver)
+            if valid_versions:
+                key = f"python{minor.replace('.', '')}_ver"
+                result.version_metas.append(VersionMeta(key=key, version=valid_versions[0]))
         
         result.success = True
         return result
+

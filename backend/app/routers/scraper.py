@@ -85,6 +85,64 @@ async def run_single_scraper(
     return {"message": f"Scraper '{scraper_name}' started in background"}
 
 
+@router.post("/recache")
+async def recache_resources(
+    current_user: CurrentUser,
+    db: DbSession,
+    background_tasks: BackgroundTasks,
+    overwrite: bool = False,
+    max_concurrent: int = 5,
+):
+    """
+    Re-cache all existing resources without re-scraping.
+    
+    Downloads all resources currently in Redis to local cache.
+    
+    Query parameters:
+    - overwrite: If True, overwrite existing cached files. If False, skip already cached files.
+    - max_concurrent: Maximum concurrent downloads (default: 5)
+    
+    Requires authentication.
+    """
+    from app.services import cache_service
+    from app.core.log_broadcaster import broadcaster, LogLevel
+    
+    settings = await setting_service.get_all_settings(db)
+    
+    async def run_recache():
+        await broadcaster.broadcast(
+            f"📥 Starting re-cache job (overwrite={overwrite}, concurrent={max_concurrent})...",
+            level=LogLevel.INFO,
+        )
+        
+        async def progress_callback(downloaded, skipped, failed, total):
+            if (downloaded + skipped + failed) % 20 == 0:
+                await broadcaster.broadcast(
+                    f"📦 Progress: {downloaded} downloaded, {skipped} skipped, {failed} failed / {total}",
+                    level=LogLevel.INFO,
+                )
+        
+        stats = await cache_service.recache_all_resources(
+            settings=settings,
+            skip_existing=not overwrite,
+            max_concurrent=max_concurrent,
+            progress_callback=progress_callback,
+        )
+        
+        await broadcaster.broadcast(
+            f"✅ Re-cache completed: {stats['downloaded']} downloaded, {stats['skipped']} skipped, {stats['failed']} failed / {stats['total']}",
+            level=LogLevel.SUCCESS if stats['failed'] == 0 else LogLevel.WARNING,
+        )
+    
+    background_tasks.add_task(run_recache)
+    
+    return {
+        "message": "Re-cache job started in background",
+        "overwrite": overwrite,
+        "max_concurrent": max_concurrent,
+    }
+
+
 @router.get("/logs", response_model=ScrapeLogListResponse)
 async def get_scrape_logs(
     current_user: CurrentUser,

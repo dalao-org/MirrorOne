@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 
-BLACKLIST_WORDS = ["alpha", "beta", "rc", "test"]
+DEFAULT_BLACKLIST = ["alpha", "beta", "rc", "test"]
 
 # PHP PECL packages to scrape
 PECL_PACKAGES = [
@@ -31,10 +31,12 @@ class PhpPluginsScraper(BaseScraper):
     async def scrape(self) -> ScrapeResult:
         result = ScrapeResult(scraper_name=self.name)
         
+        blacklist = self.settings.get("php_plugins_blacklist", DEFAULT_BLACKLIST)
+        
         for package_name, file_prefix, meta_key, allow_unstable in PECL_PACKAGES:
             try:
                 await self._scrape_pecl_package(
-                    package_name, file_prefix, meta_key, allow_unstable, result
+                    package_name, file_prefix, meta_key, allow_unstable, blacklist, result
                 )
             except Exception as e:
                 # Log but continue with other packages
@@ -49,6 +51,7 @@ class PhpPluginsScraper(BaseScraper):
         file_prefix: str,
         meta_key: str,
         allow_unstable: bool,
+        blacklist: list[str],
         result: ScrapeResult,
     ) -> None:
         """Scrape a single PECL package."""
@@ -74,7 +77,7 @@ class PhpPluginsScraper(BaseScraper):
             
             if text.startswith(f"{file_prefix}-") and text.endswith(".tgz"):
                 # Filter unstable versions
-                if not allow_unstable and any(word in text.lower() for word in BLACKLIST_WORDS):
+                if not allow_unstable and any(word in text.lower() for word in blacklist):
                     continue
                 
                 version = text.replace(f"{file_prefix}-", "").replace(".tgz", "")

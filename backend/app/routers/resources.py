@@ -26,6 +26,38 @@ async def get_all_resources(current_user: CurrentUser):
     )
 
 
+@router.get("/public")
+async def get_public_resources():
+    """
+    Get all resources grouped by source (public, no auth).
+    
+    Returns resources organized by scraper/source for display.
+    """
+    resources = await redirect_service.get_all_resources()
+    
+    # Group by source
+    grouped: dict[str, list] = {}
+    for res in resources:
+        source = res.get("source", "unknown")
+        if source not in grouped:
+            grouped[source] = []
+        grouped[source].append({
+            "file_name": res.get("file_name"),
+            "url": res.get("url"),
+            "version": res.get("version"),
+            "updated_at": res.get("updated_at"),
+        })
+    
+    # Sort each group by version (newest first)
+    for source in grouped:
+        grouped[source].sort(key=lambda x: x.get("version", ""), reverse=True)
+    
+    return {
+        "total": len(resources),
+        "sources": grouped,
+    }
+
+
 @router.get("/scraper/{scraper_name}", response_model=ResourceListResponse)
 async def get_resources_by_scraper(scraper_name: str, current_user: CurrentUser):
     """

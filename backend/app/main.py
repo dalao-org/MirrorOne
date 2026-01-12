@@ -112,8 +112,51 @@ app.include_router(redirect_router)
 async def health_check():
     """
     Health check endpoint for Docker healthcheck.
+    
+    Includes scraper status information.
     """
-    return {"status": "healthy", "version": "2.0.0"}
+    from app import redis_client
+    from app.database import get_db_session
+    from app.models.scrape_log import ScrapeLog
+    from sqlalchemy import select, desc
+    
+    # Get scheduler times from Redis
+    scheduler_times = await redis_client.get_scheduler_times()
+    
+    # Get last successful scrape from database
+    last_success = None
+    try:
+        async with get_db_session() as db:
+            result = await db.execute(
+                select(ScrapeLog)
+                .where(ScrapeLog.status == "success")
+                .order_by(desc(ScrapeLog.finished_at))
+                .limit(1)
+            )
+            log = result.scalar_one_or_none()
+            if log and log.finished_at:
+                last_success = log.finished_at.isoformat()
+    except Exception:
+        pass
+    
+    # Get mirror_type setting
+    mirror_type = "redirect"
+    try:
+        async with get_db_session() as db:
+            from app.services import setting_service
+            settings_dict = await setting_service.get_all_settings(db)
+            mirror_type = settings_dict.get("mirror_type", "redirect")
+    except Exception:
+        pass
+    
+    return {
+        "status": "healthy",
+        "version": "2.0.0",
+        "mirror_type": mirror_type,
+        "last_scrape": scheduler_times.get("last_run"),
+        "last_success": last_success,
+        "next_scrape": scheduler_times.get("next_run"),
+    }
 
 
 @app.get("/")

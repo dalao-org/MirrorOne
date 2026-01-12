@@ -58,7 +58,6 @@ class ScrapeResult:
         else:
             return "failed"
 
-
 class BaseScraper(ABC):
     """
     Abstract base class for all scrapers.
@@ -100,6 +99,56 @@ class BaseScraper(ABC):
             headers["Authorization"] = f"Bearer {self.github_token}"
         return headers
     
+    async def log(self, message: str, level: str = "info") -> None:
+        """Broadcast a log message for this scraper."""
+        from app.core.log_broadcaster import broadcaster, LogLevel
+        
+        level_map = {
+            "info": LogLevel.INFO,
+            "success": LogLevel.SUCCESS,
+            "warning": LogLevel.WARNING,
+            "error": LogLevel.ERROR,
+        }
+        await broadcaster.broadcast(
+            message=message,
+            level=level_map.get(level, LogLevel.INFO),
+            scraper=self.name,
+        )
+    
+    async def fetch(self, url: str, method: str = "GET", **kwargs) -> httpx.Response:
+        """
+        Fetch a URL with logging.
+        
+        Broadcasts request start, completion or error.
+        """
+        # Extract just the path for cleaner logs
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        short_url = parsed.netloc + parsed.path[:50] + ("..." if len(parsed.path) > 50 else "")
+        
+        await self.log(f"📡 {method} {short_url}")
+        
+        try:
+            if method.upper() == "GET":
+                response = await self.http_client.get(url, headers=self.get_headers(), **kwargs)
+            else:
+                response = await self.http_client.request(method, url, headers=self.get_headers(), **kwargs)
+            
+            status = response.status_code
+            size = len(response.content) if response.content else 0
+            size_str = f"{size // 1024}KB" if size > 1024 else f"{size}B"
+            
+            if status >= 400:
+                await self.log(f"❌ {status} {short_url}", "error")
+            else:
+                await self.log(f"✓ {status} {short_url} ({size_str})", "success")
+            
+            return response
+            
+        except Exception as e:
+            await self.log(f"❌ Error: {short_url} - {type(e).__name__}", "error")
+            raise
+    
     async def safe_scrape(self) -> ScrapeResult:
         """
         Execute scrape with exception handling.
@@ -107,13 +156,35 @@ class BaseScraper(ABC):
         Returns:
             ScrapeResult, with error_message set if an exception occurred
         """
+        from app.core.log_broadcaster import broadcaster, LogLevel
+        
         result = ScrapeResult(scraper_name=self.name)
+        
+        await broadcaster.broadcast(
+            f"🔍 Starting scraper: {self.name}",
+            level=LogLevel.INFO,
+            scraper=self.name,
+        )
+        
         try:
             result = await self.scrape()
             result.success = True
+            
+            await broadcaster.broadcast(
+                f"✅ {self.name}: Found {result.resources_count} resources",
+                level=LogLevel.SUCCESS,
+                scraper=self.name,
+            )
         except Exception as e:
             result.error_message = f"{type(e).__name__}: {str(e)}"
             result.success = False
+            
+            await broadcaster.broadcast(
+                f"❌ {self.name} failed: {result.error_message}",
+                level=LogLevel.ERROR,
+                scraper=self.name,
+            )
         finally:
             result.finished_at = datetime.now(UTC)
         return result
+

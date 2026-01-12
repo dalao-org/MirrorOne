@@ -164,6 +164,29 @@ export default function DashboardPage() {
         }
     };
 
+    const handleRecache = async (overwrite: boolean = false) => {
+        try {
+            setLogs([]);
+            setShowLogConsole(true);
+
+            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+            }
+
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const response = await fetch(`${apiUrl}/api/scraper/recache?overwrite=${overwrite}&max_concurrent=5`, {
+                method: "POST",
+                headers: getAuthHeaders(),
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to start re-cache");
+            }
+        } catch (err) {
+            alert(err instanceof Error ? err.message : "Error starting re-cache");
+        }
+    };
+
     const getLogColor = (level: string) => {
         switch (level) {
             case "success": return "#22c55e";
@@ -350,6 +373,48 @@ export default function DashboardPage() {
                     >
                         🚀 Run Scrape Now
                     </button>
+
+                    {/* Re-cache buttons */}
+                    <div style={{ marginTop: "1rem" }}>
+                        <p style={{
+                            margin: "0 0 0.5rem 0",
+                            fontSize: "0.75rem",
+                            color: "#64748b",
+                            textAlign: "center",
+                        }}>
+                            📦 Re-cache (download without re-scraping)
+                        </p>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button
+                                onClick={() => handleRecache(false)}
+                                className="btn"
+                                style={{
+                                    flex: 1,
+                                    background: "rgba(34,197,94,0.2)",
+                                    border: "1px solid rgba(34,197,94,0.4)",
+                                    color: "#22c55e",
+                                    padding: "0.5rem",
+                                    fontSize: "0.75rem",
+                                }}
+                            >
+                                Skip Existing
+                            </button>
+                            <button
+                                onClick={() => handleRecache(true)}
+                                className="btn"
+                                style={{
+                                    flex: 1,
+                                    background: "rgba(239,68,68,0.2)",
+                                    border: "1px solid rgba(239,68,68,0.4)",
+                                    color: "#ef4444",
+                                    padding: "0.5rem",
+                                    fontSize: "0.75rem",
+                                }}
+                            >
+                                Overwrite All
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Available Scrapers - Capsule Style */}

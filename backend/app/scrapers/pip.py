@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 from .base import BaseScraper, Resource, ScrapeResult
 from .registry import registry
 
-BLACK_LIST_WORDS = ["test", "b1", "b2", "b3", "a1", "a2", "rc"]
+DEFAULT_BLACKLIST = ["test", "b1", "b2", "b3", "a1", "a2", "rc"]
 
 
 @registry.register("pip")
@@ -17,18 +17,19 @@ class PipScraper(BaseScraper):
         result = ScrapeResult(scraper_name=self.name)
         
         max_versions = self.settings.get("pip_max_versions", 5)
+        blacklist = self.settings.get("pip_blacklist", DEFAULT_BLACKLIST)
         
         # Scrape pip from PyPI
-        await self._scrape_pypi_package("pip", max_versions, result)
+        await self._scrape_pypi_package("pip", max_versions, blacklist, result)
         
         # Scrape setuptools from PyPI
-        await self._scrape_pypi_package("setuptools", max_versions, result)
+        await self._scrape_pypi_package("setuptools", max_versions, blacklist, result)
         
         result.success = True
         return result
     
     async def _scrape_pypi_package(
-        self, package: str, max_versions: int, result: ScrapeResult
+        self, package: str, max_versions: int, blacklist: list[str], result: ScrapeResult
     ) -> None:
         """Scrape a package from PyPI."""
         try:
@@ -46,7 +47,7 @@ class PipScraper(BaseScraper):
                 
                 if text.endswith(".tar.gz") and package in text.lower():
                     # Filter blacklisted versions
-                    if any(word in text.lower() for word in BLACK_LIST_WORDS):
+                    if any(word in text.lower() for word in blacklist):
                         continue
                     
                     # Extract version

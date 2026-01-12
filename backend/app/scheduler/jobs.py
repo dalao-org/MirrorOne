@@ -5,6 +5,8 @@ import logging
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
+import httpx
+
 from app import redis_client
 from app.scrapers.registry import registry
 from app.scrapers.base import ScrapeResult
@@ -36,12 +38,13 @@ async def save_scrape_log(result: ScrapeResult) -> None:
         await db.commit()
 
 
-async def update_redis_from_result(result: ScrapeResult) -> None:
+async def update_redis_from_result(result: ScrapeResult, settings: dict[str, Any] | None = None) -> None:
     """
     Update Redis with resources from a scrape result.
     
     Args:
         result: ScrapeResult with resources and version metas
+        settings: Optional settings for cache mode
     """
     if not result.success and not result.resources:
         return
@@ -61,6 +64,54 @@ async def update_redis_from_result(result: ScrapeResult) -> None:
     # Update version metas
     for meta in result.version_metas:
         await redis_client.set_version_meta(meta.key, meta.version)
+
+
+async def download_cache_for_result(result: ScrapeResult, settings: dict[str, Any]) -> None:
+    """
+    Download resources to cache for a scrape result (parallel).
+    
+    Called separately after scraping is complete.
+    """
+    if settings.get("mirror_type") != "cache":
+        return
+    
+    from app.services import cache_service
+    
+    cache_path = cache_service.get_cache_path(settings)
+    
+    await broadcaster.broadcast(
+        f"📥 Downloading {len(result.resources)} files (parallel) for {result.scraper_name}...",
+        level=LogLevel.INFO,
+        scraper=result.scraper_name,
+    )
+    
+    # Convert resources to dicts for parallel download
+    resources = [
+        {"url": r.url, "file_name": r.file_name, "source": result.scraper_name}
+        for r in result.resources
+    ]
+    
+    async def progress_callback(downloaded, skipped, failed, total):
+        if (downloaded + skipped + failed) % 10 == 0:  # Update every 10 files
+            await broadcaster.broadcast(
+                f"📦 {result.scraper_name}: {downloaded} downloaded, {skipped} skipped, {failed} failed / {total}",
+                level=LogLevel.INFO,
+                scraper=result.scraper_name,
+            )
+    
+    stats = await cache_service.download_resources_parallel(
+        resources=resources,
+        cache_path=cache_path,
+        skip_existing=True,
+        max_concurrent=5,
+        progress_callback=progress_callback,
+    )
+    
+    await broadcaster.broadcast(
+        f"📦 Cache complete: {stats['downloaded']} downloaded, {stats['skipped']} skipped, {stats['failed']} failed for {result.scraper_name}",
+        level=LogLevel.SUCCESS if stats['failed'] == 0 else LogLevel.WARNING,
+        scraper=result.scraper_name,
+    )
 
 
 async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
@@ -137,7 +188,7 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
             )
         
         # Update Redis
-        await update_redis_from_result(result)
+        await update_redis_from_result(result, settings)
         
         # Save log
         await save_scrape_log(result)
@@ -149,6 +200,20 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
         summary_msg,
         level=LogLevel.SUCCESS if failed_count == 0 else LogLevel.WARNING,
     )
+    
+    # Phase 2: Download files to cache (if cache mode enabled)
+    if settings.get("mirror_type") == "cache":
+        await broadcaster.broadcast(
+            "📥 Starting cache download phase...",
+            level=LogLevel.INFO,
+        )
+        for result in results:
+            if result.success and result.resources:
+                await download_cache_for_result(result, settings)
+        await broadcaster.broadcast(
+            "✅ Cache download phase completed",
+            level=LogLevel.SUCCESS,
+        )
     
     return results
 
@@ -211,7 +276,7 @@ async def run_single_scraper_job(scraper_name: str, settings: dict[str, Any]) ->
         )
     
     # Update Redis
-    await update_redis_from_result(result)
+    await update_redis_from_result(result, settings)
     
     # Save log
     await save_scrape_log(result)

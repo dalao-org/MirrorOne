@@ -7,8 +7,9 @@ from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 
 
-BLACK_LIST_KEYWORD = ["arm", "32-bit", "test", "minimal", "ia-64", "debug"]
-ACCEPTED_VERSIONS = ["5.5", "5.6", "5.7", "8.0", "8.4", "9.0", "9.1"]
+# Default values for settings (used as fallbacks)
+DEFAULT_BLACKLIST = ["arm", "32-bit", "test", "minimal", "ia-64", "debug"]
+DEFAULT_ACCEPTED_VERSIONS = ["5.5", "5.6", "5.7", "8.0", "8.4", "9.0", "9.1"]
 
 
 @registry.register("mysql")
@@ -41,18 +42,14 @@ class MySQLScraper(BaseScraper):
             if major_minor not in version_groups:
                 version_groups[major_minor] = r.version
         
-        # Add version metas
-        version_mapping = {
-            "8.4": "mysql84_ver",
-            "8.0": "mysql80_ver",
-            "5.7": "mysql57_ver",
-            "5.6": "mysql56_ver",
-            "5.5": "mysql55_ver",
-        }
-        for mm, meta_key in version_mapping.items():
-            if mm in version_groups:
+        # Add version metas dynamically based on accepted_versions
+        accepted_versions = self.settings.get("mysql_accepted_versions", DEFAULT_ACCEPTED_VERSIONS)
+        for major_minor in accepted_versions:
+            if major_minor in version_groups:
+                # Generate key like "mysql84_ver" from "8.4"
+                key = f"mysql{major_minor.replace('.', '')}_ver"
                 result.version_metas.append(
-                    VersionMeta(key=meta_key, version=version_groups[mm])
+                    VersionMeta(key=key, version=version_groups[major_minor])
                 )
         
         result.success = True
@@ -76,7 +73,8 @@ class MySQLScraper(BaseScraper):
                 td_elements = row.find_all("td")
                 package_name = td_elements[0].text
                 
-                if any(kw in package_name.lower() for kw in BLACK_LIST_KEYWORD):
+                blacklist = self.settings.get("mysql_blacklist", DEFAULT_BLACKLIST)
+                if any(kw in package_name.lower() for kw in blacklist):
                     continue
                 
                 link = td_elements[3].find("a")
@@ -127,9 +125,10 @@ class MySQLScraper(BaseScraper):
                 return resources
             
             options = label.parent.find_all("option")
+            accepted_versions = self.settings.get("mysql_accepted_versions", DEFAULT_ACCEPTED_VERSIONS)
             versions = [
                 opt.text for opt in options
-                if any(opt.text.startswith(av) for av in ACCEPTED_VERSIONS)
+                if any(opt.text.startswith(av) for av in accepted_versions)
                 and not any(c.isalpha() for c in opt.text)
             ]
             
