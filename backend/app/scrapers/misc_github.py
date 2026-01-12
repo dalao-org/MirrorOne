@@ -6,7 +6,7 @@ gperftools, icu4c, libzip, libsodium, argon2, libevent, webgrind, ngx_devel_kit,
 import re
 from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
-from .github_utils import get_github_releases, get_packages_from_release
+from .github_utils import get_github_releases
 
 
 # Configuration for misc GitHub repos
@@ -40,9 +40,9 @@ class MiscGithubScraper(BaseScraper):
                 await self._scrape_repo(
                     owner, repo, meta_key, file_pattern, max_releases, result
                 )
-            except Exception as e:
-                # Log but continue with other repos
-                pass
+            except Exception:
+                # Intentionally continue with other repos - one failed repo shouldn't stop others
+                continue
         
         result.success = True
         return result

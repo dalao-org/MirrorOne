@@ -34,13 +34,13 @@ class PostgreSQLScraper(BaseScraper):
             # Extract version number
             version_str = text.replace("/", "").replace("v", "")
             try:
-                version_float = float(version_str)
+                float(version_str)  # Validate it's a valid float
                 versions.append(version_str)
             except ValueError:
                 continue
         
         # Sort and limit
-        versions.sort(key=lambda x: float(x), reverse=True)
+        versions.sort(key=float, reverse=True)
         max_versions = self.settings.get("postgresql_max_versions", 10)
         versions = versions[:max_versions]
         

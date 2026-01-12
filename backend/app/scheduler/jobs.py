@@ -5,8 +5,6 @@ import logging
 from datetime import datetime, timedelta, UTC
 from typing import Any
 
-import httpx
-
 from app import redis_client
 from app.scrapers.registry import registry
 from app.scrapers.base import ScrapeResult

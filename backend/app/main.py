@@ -137,6 +137,7 @@ async def health_check():
             if log and log.finished_at:
                 last_success = log.finished_at.isoformat()
     except Exception:
+        # Intentionally ignore - health check should return even if DB query fails
         pass
     
     # Get mirror_type setting
@@ -147,6 +148,7 @@ async def health_check():
             settings_dict = await setting_service.get_all_settings(db)
             mirror_type = settings_dict.get("mirror_type", "redirect")
     except Exception:
+        # Intentionally ignore - use default value if settings query fails
         pass
     
     return {

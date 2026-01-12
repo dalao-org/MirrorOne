@@ -23,7 +23,8 @@ export async function GET() {
 
         const data = await response.json();
         return NextResponse.json(data);
-    } catch {
+    } catch (error) {
+        console.error("[health] Backend unavailable:", error);
         return NextResponse.json(
             {
                 status: "unhealthy",

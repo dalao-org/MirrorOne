@@ -1,7 +1,6 @@
 """
 Apache HTTPD scraper.
 """
-import re
 from bs4 import BeautifulSoup
 
 from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
@@ -29,7 +28,6 @@ class HttpdScraper(BaseScraper):
         # Find all httpd tar.gz files
         versions = []
         for link in soup.find_all("a"):
-            href = link.get("href", "")
             text = link.text
             if text.startswith("httpd-") and text.endswith(".tar.gz"):
                 # Skip blacklisted versions

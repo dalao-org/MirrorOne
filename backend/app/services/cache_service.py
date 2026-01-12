@@ -1,7 +1,6 @@
 """
 Cache service for downloading and managing cached files.
 """
-import os
 import logging
 import asyncio
 from pathlib import Path

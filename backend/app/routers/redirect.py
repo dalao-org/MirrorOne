@@ -1,9 +1,7 @@
 """
 Redirect router for public file redirects.
 """
-import json
 from datetime import datetime, UTC
-from pathlib import Path
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import RedirectResponse, PlainTextResponse, JSONResponse, FileResponse
 

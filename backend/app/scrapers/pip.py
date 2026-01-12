@@ -65,4 +65,5 @@ class PipScraper(BaseScraper):
                     version=version,
                 ))
         except Exception:
+            # Intentionally ignore - continue with other packages on failure
             pass

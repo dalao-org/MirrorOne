@@ -7,7 +7,8 @@ export async function GET() {
         const response = await fetch(`${apiUrl}/resource.json`, { cache: "no-store" });
         const data = await response.json();
         return NextResponse.json(data);
-    } catch {
+    } catch (error) {
+        console.error("[resource.json] Backend unavailable:", error);
         return NextResponse.json(
             { error: "Backend unavailable" },
             { status: 503 }

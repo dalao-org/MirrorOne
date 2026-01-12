@@ -5,7 +5,6 @@ import asyncio
 import json
 import logging
 from datetime import datetime, UTC
-from typing import Any
 from dataclasses import dataclass, asdict
 from enum import Enum
 

@@ -1,6 +1,8 @@
 """
 Scraper router for managing scrape tasks.
 """
+import asyncio
+
 from fastapi import APIRouter, HTTPException, status, BackgroundTasks
 from sqlalchemy import select, desc
 
@@ -228,13 +230,10 @@ async def websocket_logs(
                 # Send ping to keep connection alive
                 try:
                     await websocket.send_json({"type": "ping"})
-                except Exception:
+                except Exception:  # WebSocket closed or failed - exit loop
                     break
     except WebSocketDisconnect:
         pass
     finally:
         await broadcaster.unsubscribe(queue)
-
-
-import asyncio
 

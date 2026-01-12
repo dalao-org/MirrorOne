@@ -134,6 +134,7 @@ class MySQLScraper(BaseScraper):
                     checksum_type="md5" if md5 else None,
                 )
         except Exception:
+            # Intentionally return None - caller will skip this version
             pass
         return None
     
@@ -191,6 +192,7 @@ class MySQLScraper(BaseScraper):
                     resource.version = version
                     resources.append(resource)
         except Exception:
+            # Intentionally ignore - return partial results on failure
             pass
         
         return resources
@@ -222,6 +224,7 @@ class MySQLScraper(BaseScraper):
                     resource.version = version
                     resources.append(resource)
         except Exception:
+            # Intentionally ignore - return partial results on failure
             pass
         
         return resources

@@ -20,7 +20,8 @@ export async function GET() {
             status: 200,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
         });
-    } catch {
+    } catch (error) {
+        console.error("[suggest_versions.txt] Backend unavailable:", error);
         return new NextResponse("# Error: Backend unavailable\n", {
             status: 503,
             headers: { "Content-Type": "text/plain; charset=utf-8" },
