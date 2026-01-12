@@ -9,7 +9,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm install
 
 # Build the app
 FROM base AS builder

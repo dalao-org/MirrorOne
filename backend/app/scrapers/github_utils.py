@@ -15,6 +15,8 @@ async def get_github_releases(
     owner: str,
     repo: str,
     headers: dict[str, str],
+    include_prerelease: bool = True,
+    max_releases: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Get releases from a GitHub repository.
@@ -24,6 +26,8 @@ async def get_github_releases(
         owner: Repository owner
         repo: Repository name
         headers: Request headers
+        include_prerelease: Whether to include prerelease versions
+        max_releases: Maximum number of releases to return (None = all)
         
     Returns:
         List of release dictionaries
@@ -31,7 +35,17 @@ async def get_github_releases(
     url = f"https://api.github.com/repos/{owner}/{repo}/releases"
     response = await client.get(url, headers=headers)
     response.raise_for_status()
-    return response.json()
+    releases = response.json()
+    
+    # Filter prereleases if needed
+    if not include_prerelease:
+        releases = [r for r in releases if not r.get("prerelease", False)]
+    
+    # Limit results
+    if max_releases is not None:
+        releases = releases[:max_releases]
+    
+    return releases
 
 
 async def get_github_tags(
@@ -39,6 +53,7 @@ async def get_github_tags(
     owner: str,
     repo: str,
     headers: dict[str, str],
+    max_tags: int | None = None,
 ) -> list[str]:
     """
     Get tags from a GitHub repository.
@@ -48,15 +63,25 @@ async def get_github_tags(
         owner: Repository owner
         repo: Repository name
         headers: Request headers
+        max_tags: Maximum number of tags to return (None = all)
         
     Returns:
-        List of tag names
+        List of tag names (newest first)
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/git/refs/tags"
     response = await client.get(url, headers=headers)
     response.raise_for_status()
     tags = response.json()
-    return [tag["ref"].replace("refs/tags/", "") for tag in tags]
+    tag_names = [tag["ref"].replace("refs/tags/", "") for tag in tags]
+    
+    # Reverse to get newest first
+    tag_names.reverse()
+    
+    # Limit results
+    if max_tags is not None:
+        tag_names = tag_names[:max_tags]
+    
+    return tag_names
 
 
 def filter_blacklist(items: list[str]) -> list[str]:
@@ -138,19 +163,16 @@ async def get_packages_from_release(
     Returns:
         Tuple of (resources list, version meta or None)
     """
-    releases = await get_github_releases(client, owner, repo, headers)
-    
-    # Filter out prereleases
-    releases = [r for r in releases if not r.get("prerelease", False)]
+    releases = await get_github_releases(
+        client, owner, repo, headers,
+        include_prerelease=False,
+        max_releases=max_releases,
+    )
     
     resources = []
     pattern = re.compile(regex)
     
-    release_count = 0
     for release in releases:
-        if release_count >= max_releases:
-            break
-        
         for asset in release.get("assets", []):
             if pattern.search(asset["name"]):
                 resources.append(Resource(
@@ -158,8 +180,6 @@ async def get_packages_from_release(
                     url=asset["browser_download_url"],
                     version=release["tag_name"],
                 ))
-        
-        release_count += 1
     
     version_meta = None
     if latest_meta_key and resources:

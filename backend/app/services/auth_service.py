@@ -48,7 +48,7 @@ async def create_user_token(user: User) -> TokenResponse:
     Returns:
         TokenResponse with access token
     """
-    token, expires_at = create_access_token({"sub": user.id})
+    token, expires_at = create_access_token({"sub": str(user.id)})
     
     return TokenResponse(
         access_token=token,

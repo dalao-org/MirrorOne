@@ -6,7 +6,9 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - db_data:/app/data
+      - ./db_data:/app/data
+    ports:
+      - 7980:8000
     expose:
       - 8000
     depends_on:
@@ -26,6 +28,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./frontend/.env
+    ports:
+      - 3000:3000
     expose:
       - 3000
     depends_on:
@@ -47,7 +51,5 @@ services:
       retries: 3
 
 volumes:
-  db_data:
-    name: oneinstack-mirror-db
   redis_data:
     name: oneinstack-mirror-redis

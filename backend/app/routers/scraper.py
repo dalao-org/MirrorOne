@@ -113,3 +113,70 @@ async def get_scrape_logs(
         total=total,
         logs=[ScrapeLogResponse.model_validate(log) for log in logs],
     )
+
+
+# WebSocket endpoint for real-time log streaming
+from fastapi import WebSocket, WebSocketDisconnect, Query
+from app.core.security import decode_access_token
+from app.core.log_broadcaster import broadcaster
+
+
+@router.websocket("/ws/logs")
+async def websocket_logs(
+    websocket: WebSocket,
+    token: str = Query(..., description="JWT access token"),
+):
+    """
+    WebSocket endpoint for real-time scraper log streaming.
+    
+    Connect with: ws://host/api/scraper/ws/logs?token=<jwt_token>
+    
+    Messages are JSON with format:
+    {
+        "level": "info|success|warning|error",
+        "message": "Log message text",
+        "scraper": "scraper_name or null",
+        "timestamp": "ISO timestamp"
+    }
+    """
+    # Validate JWT token
+    payload = decode_access_token(token)
+    if payload is None:
+        await websocket.close(code=4001, reason="Invalid or expired token")
+        return
+    
+    # Accept the connection
+    await websocket.accept()
+    
+    # Subscribe to log broadcaster
+    queue = await broadcaster.subscribe()
+    
+    try:
+        # Send welcome message
+        await websocket.send_json({
+            "level": "info",
+            "message": "Connected to log stream",
+            "scraper": None,
+            "timestamp": None,
+        })
+        
+        # Forward messages from queue to WebSocket
+        while True:
+            try:
+                # Wait for messages with timeout for keepalive
+                message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                await websocket.send_text(message)
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await broadcaster.unsubscribe(queue)
+
+
+import asyncio
+

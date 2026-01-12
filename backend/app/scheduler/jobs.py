@@ -10,6 +10,7 @@ from app.scrapers.registry import registry
 from app.scrapers.base import ScrapeResult
 from app.database import get_db_session
 from app.models.scrape_log import ScrapeLog
+from app.core.log_broadcaster import broadcaster, LogLevel
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,10 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
         List of ScrapeResults
     """
     logger.info("Starting scheduled scrape job")
+    await broadcaster.broadcast(
+        "🚀 Starting scheduled scrape job...",
+        level=LogLevel.INFO,
+    )
     
     # Update scheduler times
     now = datetime.now(UTC)
@@ -80,16 +85,56 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
     next_run = now + timedelta(hours=interval_hours)
     await redis_client.set_scheduler_times(last_run=now, next_run=next_run)
     
+    # Get scraper names for progress reporting
+    scraper_names = registry.get_all_names()
+    total_scrapers = len(scraper_names)
+    
+    await broadcaster.broadcast(
+        f"📋 Found {total_scrapers} scrapers to run: {', '.join(scraper_names)}",
+        level=LogLevel.INFO,
+    )
+    
     # Run all scrapers
     results = await registry.run_all(settings)
     
     # Process results
+    success_count = 0
+    failed_count = 0
+    total_resources = 0
+    
     for result in results:
-        logger.info(
+        log_msg = (
             f"Scraper '{result.scraper_name}' completed: "
             f"status={result.status}, resources={result.resources_count}, "
             f"duration={result.duration_seconds:.2f}s"
         )
+        logger.info(log_msg)
+        
+        # Broadcast result based on status
+        if result.status == "success":
+            success_count += 1
+            total_resources += result.resources_count
+            await broadcaster.broadcast(
+                f"✅ {result.scraper_name}: {result.resources_count} resources ({result.duration_seconds:.1f}s)",
+                level=LogLevel.SUCCESS,
+                scraper=result.scraper_name,
+            )
+        elif result.status == "partial":
+            success_count += 1
+            total_resources += result.resources_count
+            await broadcaster.broadcast(
+                f"⚠️ {result.scraper_name}: {result.resources_count} resources (partial, {result.duration_seconds:.1f}s)",
+                level=LogLevel.WARNING,
+                scraper=result.scraper_name,
+            )
+        else:
+            failed_count += 1
+            error_msg = result.error_message or "Unknown error"
+            await broadcaster.broadcast(
+                f"❌ {result.scraper_name}: Failed - {error_msg}",
+                level=LogLevel.ERROR,
+                scraper=result.scraper_name,
+            )
         
         # Update Redis
         await update_redis_from_result(result)
@@ -97,7 +142,14 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
         # Save log
         await save_scrape_log(result)
     
-    logger.info(f"Scheduled scrape job completed. {len(results)} scrapers processed.")
+    # Final summary
+    summary_msg = f"🏁 Scrape job completed: {success_count} succeeded, {failed_count} failed, {total_resources} total resources"
+    logger.info(summary_msg)
+    await broadcaster.broadcast(
+        summary_msg,
+        level=LogLevel.SUCCESS if failed_count == 0 else LogLevel.WARNING,
+    )
+    
     return results
 
 
@@ -113,18 +165,50 @@ async def run_single_scraper_job(scraper_name: str, settings: dict[str, Any]) ->
         ScrapeResult or None if scraper not found
     """
     logger.info(f"Starting single scraper job: {scraper_name}")
+    await broadcaster.broadcast(
+        f"🚀 Starting scraper: {scraper_name}",
+        level=LogLevel.INFO,
+        scraper=scraper_name,
+    )
     
     result = await registry.run_one(scraper_name, settings)
     
     if result is None:
         logger.error(f"Scraper '{scraper_name}' not found")
+        await broadcaster.broadcast(
+            f"❌ Scraper '{scraper_name}' not found",
+            level=LogLevel.ERROR,
+            scraper=scraper_name,
+        )
         return None
     
-    logger.info(
+    log_msg = (
         f"Scraper '{result.scraper_name}' completed: "
         f"status={result.status}, resources={result.resources_count}, "
         f"duration={result.duration_seconds:.2f}s"
     )
+    logger.info(log_msg)
+    
+    # Broadcast result based on status
+    if result.status == "success":
+        await broadcaster.broadcast(
+            f"✅ {result.scraper_name}: {result.resources_count} resources ({result.duration_seconds:.1f}s)",
+            level=LogLevel.SUCCESS,
+            scraper=result.scraper_name,
+        )
+    elif result.status == "partial":
+        await broadcaster.broadcast(
+            f"⚠️ {result.scraper_name}: {result.resources_count} resources (partial)",
+            level=LogLevel.WARNING,
+            scraper=result.scraper_name,
+        )
+    else:
+        error_msg = result.error_message or "Unknown error"
+        await broadcaster.broadcast(
+            f"❌ {result.scraper_name}: Failed - {error_msg}",
+            level=LogLevel.ERROR,
+            scraper=result.scraper_name,
+        )
     
     # Update Redis
     await update_redis_from_result(result)

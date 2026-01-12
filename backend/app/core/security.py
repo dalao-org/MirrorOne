@@ -3,12 +3,13 @@ Security utilities for password hashing and JWT token handling.
 """
 from datetime import datetime, timedelta, UTC
 from typing import Any
+import logging
 import bcrypt
 import jwt
 
 from app.config import get_settings
 
-settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 def hash_password(password: str) -> str:
@@ -50,6 +51,8 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
     Returns:
         Tuple of (token string, expiration datetime)
     """
+    settings = get_settings()  # Get settings at call time, not import time
+    
     to_encode = data.copy()
     
     if expires_delta:
@@ -58,6 +61,8 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
         expire = datetime.now(UTC) + timedelta(hours=settings.JWT_EXPIRE_HOURS)
     
     to_encode.update({"exp": expire})
+    
+    logger.info(f"Creating token with SECRET_KEY: {settings.SECRET_KEY[:8]}... (algorithm: {settings.JWT_ALGORITHM})")
     
     encoded_jwt = jwt.encode(
         to_encode,
@@ -78,14 +83,20 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     Returns:
         Decoded token data or None if invalid
     """
+    settings = get_settings()  # Get settings at call time, not import time
+    
     try:
+        logger.info(f"Decoding token with SECRET_KEY: {settings.SECRET_KEY[:8]}... (algorithm: {settings.JWT_ALGORITHM})")
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
+        logger.info(f"Token decoded successfully, sub: {payload.get('sub')}")
         return payload
     except jwt.ExpiredSignatureError:
+        logger.warning("Token expired")
         return None
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"Invalid token: {e}")
         return None
