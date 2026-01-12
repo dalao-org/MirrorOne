@@ -16,8 +16,8 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const response = await fetch(`${apiUrl}/api/auth/login`, {
+            // Use relative URL - Next.js rewrites will proxy to backend
+            const response = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
