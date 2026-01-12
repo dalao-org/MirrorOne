@@ -19,7 +19,7 @@ DEFAULT_SETTINGS = [
     },
     {
         "key": "cache_path",
-        "value": "./cache",
+        "value": "/app/cache",
         "value_type": "string",
         "description": "Path to cache directory for downloaded files",
     },
