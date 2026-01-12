@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file:
-      - ./backend/.env
+      - ./.env
     volumes:
       - ./db_data:/app/data
       - ./cache:/app/cache
@@ -28,7 +28,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     env_file:
-      - ./frontend/.env
+      - ./.env
     ports:
       - 3000:3000
     expose:
@@ -50,6 +50,14 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+
+  tunnel:
+    container_name: mirrorone-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
 volumes:
   redis_data:
