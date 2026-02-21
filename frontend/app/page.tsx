@@ -31,6 +31,7 @@ export default function Home() {
     const [loading, setLoading] = useState(true);
     const [expandedSources, setExpandedSources] = useState<Set<string>>(new Set());
     const [theme, setTheme] = useState<Theme>("system");
+    const [copiedCmd, setCopiedCmd] = useState<number | null>(null);
     const [effectiveTheme, setEffectiveTheme] = useState<"light" | "dark">("dark");
 
     // Detect system theme preference and handle theme changes
@@ -499,6 +500,105 @@ export default function Home() {
                         padding: "0.1rem 0.3rem",
                         borderRadius: "4px"
                     }}>/src/nginx-1.27.4.tar.gz?force_redirect=true</code>
+                </div>
+
+                {/* lnmp Quick Setup */}
+                <div style={{
+                    background: effectiveTheme === "dark" ? "rgba(34,197,94,0.08)" : "#f0fdf4",
+                    border: `1px solid ${effectiveTheme === "dark" ? "rgba(34,197,94,0.35)" : "#bbf7d0"}`,
+                    borderRadius: "12px",
+                    padding: "1.25rem 1.25rem 1rem",
+                    marginBottom: "1.5rem",
+                }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                        <span style={{ fontSize: "1.1rem" }}>🚀</span>
+                        <span style={{ fontWeight: 700, fontSize: "0.95rem", color: effectiveTheme === "dark" ? "#4ade80" : "#166534" }}>
+                            Quick Setup — linuxeye/lnmp
+                        </span>
+                        <span style={{
+                            fontSize: "0.75rem",
+                            background: effectiveTheme === "dark" ? "rgba(34,197,94,0.2)" : "#dcfce7",
+                            color: effectiveTheme === "dark" ? "#4ade80" : "#166534",
+                            border: `1px solid ${effectiveTheme === "dark" ? "rgba(34,197,94,0.4)" : "#bbf7d0"}`,
+                            borderRadius: "999px",
+                            padding: "0.1rem 0.55rem",
+                        }}>one-click</span>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: colors.textMuted, marginBottom: "0.9rem", marginTop: 0 }}>
+                        Run the following commands to use this mirror with
+                        {" "}<a href="https://github.com/linuxeye/lnmp" target="_blank" rel="noopener noreferrer" style={{ color: effectiveTheme === "dark" ? "#4ade80" : "#15803d", textDecoration: "none" }}>linuxeye/lnmp</a>.
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {([
+                            { step: 1, label: "Clone the repository",     cmd: "git clone https://github.com/linuxeye/lnmp.git" },
+                            { step: 2, label: "Point to this mirror",      cmd: "sed -i 's|mirror_link=http://mirrors.linuxeye.com|mirror_link=http://mirror.dal.ao|' lnmp/options.conf" },
+                            { step: 3, label: "Run the installer",         cmd: "cd lnmp && ./install.sh" },
+                        ] as { step: number; label: string; cmd: string }[]).map(({ step, label, cmd }) => (
+                            <div key={step} style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.6rem",
+                                background: effectiveTheme === "dark" ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.7)",
+                                border: `1px solid ${effectiveTheme === "dark" ? "rgba(34,197,94,0.15)" : "#d1fae5"}`,
+                                borderRadius: "8px",
+                                padding: "0.5rem 0.75rem",
+                            }}>
+                                <span style={{
+                                    flexShrink: 0,
+                                    width: "1.4rem",
+                                    height: "1.4rem",
+                                    borderRadius: "50%",
+                                    background: effectiveTheme === "dark" ? "rgba(34,197,94,0.2)" : "#dcfce7",
+                                    border: `1px solid ${effectiveTheme === "dark" ? "rgba(34,197,94,0.5)" : "#86efac"}`,
+                                    color: effectiveTheme === "dark" ? "#4ade80" : "#166534",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "0.7rem",
+                                    fontWeight: 700,
+                                }}>{step}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: "0.7rem", color: colors.textMuted, marginBottom: "0.15rem" }}>{label}</div>
+                                    <code style={{
+                                        display: "block",
+                                        fontSize: "0.8rem",
+                                        color: effectiveTheme === "dark" ? "#a3e635" : "#166534",
+                                        whiteSpace: "pre-wrap",
+                                        wordBreak: "break-all",
+                                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                    }}>{cmd}</code>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(cmd);
+                                        setCopiedCmd(step);
+                                        setTimeout(() => setCopiedCmd(null), 2000);
+                                    }}
+                                    title="Copy command"
+                                    style={{
+                                        flexShrink: 0,
+                                        background: copiedCmd === step
+                                            ? (effectiveTheme === "dark" ? "rgba(34,197,94,0.25)" : "#dcfce7")
+                                            : (effectiveTheme === "dark" ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.05)"),
+                                        border: `1px solid ${copiedCmd === step
+                                            ? (effectiveTheme === "dark" ? "rgba(34,197,94,0.5)" : "#86efac")
+                                            : (effectiveTheme === "dark" ? "rgba(255,255,255,0.12)" : "#e2e8f0")}`,
+                                        borderRadius: "6px",
+                                        color: copiedCmd === step
+                                            ? (effectiveTheme === "dark" ? "#4ade80" : "#166534")
+                                            : colors.textMuted,
+                                        cursor: "pointer",
+                                        padding: "0.25rem 0.55rem",
+                                        fontSize: "0.72rem",
+                                        transition: "all 0.15s",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    {copiedCmd === step ? "✓ Copied" : "Copy"}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Resources List */}
