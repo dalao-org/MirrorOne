@@ -19,7 +19,7 @@ async def get_github_releases(
     max_releases: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Get releases from a GitHub repository.
+    Get releases from a GitHub repository, with automatic pagination.
     
     Args:
         client: HTTP client
@@ -27,25 +27,49 @@ async def get_github_releases(
         repo: Repository name
         headers: Request headers
         include_prerelease: Whether to include prerelease versions
-        max_releases: Maximum number of releases to return (None = all)
+        max_releases: Maximum number of releases to return (None = fetch all pages)
         
     Returns:
         List of release dictionaries
     """
-    url = f"https://api.github.com/repos/{owner}/{repo}/releases"
-    response = await client.get(url, headers=headers)
-    response.raise_for_status()
-    releases = response.json()
-    
-    # Filter prereleases if needed
-    if not include_prerelease:
-        releases = [r for r in releases if not r.get("prerelease", False)]
-    
+    base_url = f"https://api.github.com/repos/{owner}/{repo}/releases"
+    all_releases: list[dict[str, Any]] = []
+    page = 1
+
+    while True:
+        response = await client.get(
+            base_url,
+            headers=headers,
+            params={"per_page": 100, "page": page},
+        )
+        response.raise_for_status()
+        raw_releases = response.json()
+        raw_count = len(raw_releases)
+
+        if not raw_releases:
+            break
+
+        # Filter prereleases if needed
+        if not include_prerelease:
+            raw_releases = [r for r in raw_releases if not r.get("prerelease", False)]
+
+        all_releases.extend(raw_releases)
+
+        # If we already have enough, stop fetching more pages
+        if max_releases is not None and len(all_releases) >= max_releases:
+            break
+
+        # GitHub returns fewer than per_page items on the last page
+        if raw_count < 100:
+            break
+
+        page += 1
+
     # Limit results
     if max_releases is not None:
-        releases = releases[:max_releases]
-    
-    return releases
+        all_releases = all_releases[:max_releases]
+
+    return all_releases
 
 
 async def get_github_tags(

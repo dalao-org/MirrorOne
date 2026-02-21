@@ -18,7 +18,7 @@ MISC_REPOS = [
     ("openresty", "luajit2", "luajit2_ver", None),
     ("openresty", "lua-cjson", "lua_cjson_ver", None),
     ("gperftools", "gperftools", None, r"gperftools-\d+\.\d+\.tar\.gz"),
-    ("unicode-org", "icu", "icu4c_ver", r"icu4c-.*-(?:src|source)\.tgz"),
+    ("unicode-org", "icu", "icu4c_ver", r"icu4c-.*-(?:src|sources?)\.tgz"),
     ("nih-at", "libzip", "libzip_ver", r"libzip-.*\.tar\.gz"),
     ("jedisct1", "libsodium", "libsodium_ver", r"libsodium-.*\.tar\.gz"),
     ("P-H-C", "phc-winner-argon2", "argon2_ver", None),
