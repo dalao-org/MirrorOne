@@ -115,6 +115,13 @@ DEFAULT_SETTINGS = [
         "value_type": "json",
         "description": "GitHub releases/tags blacklist",
     },
+    # misc_github settings
+    {
+        "key": "misc_github_max_versions",
+        "value": "5",
+        "value_type": "int",
+        "description": "Number of versions to mirror for misc GitHub projects (jemalloc, icu4c, libzip, etc.). Set to 0 to mirror all versions.",
+    },
 ]
 
 
