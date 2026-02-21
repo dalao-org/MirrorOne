@@ -348,7 +348,7 @@ export default function SettingsPage() {
 
     // Group settings by module prefix
     const getSettingGroup = (key: string): string => {
-        const prefixes = ["mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "github"];
+        const prefixes = ["mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "misc_github", "github"];
         for (const prefix of prefixes) {
             if (key.startsWith(prefix + "_")) {
                 return prefix;
@@ -366,6 +366,7 @@ export default function SettingsPage() {
         apr: "📦 APR",
         pip: "📦 pip/setuptools",
         php: "🐘 PHP",
+        misc_github: "📦 Misc GitHub Projects",
         github: "🐙 GitHub",
     };
 
@@ -377,7 +378,7 @@ export default function SettingsPage() {
     }, {} as Record<string, Setting[]>);
 
     // Define group order
-    const groupOrder = ["general", "mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "github"];
+    const groupOrder = ["general", "mysql", "python", "mariadb", "httpd", "apr", "pip", "php", "misc_github", "github"];
     const sortedGroups = groupOrder.filter(g => groupedSettings[g]?.length > 0);
 
     if (loading) {
