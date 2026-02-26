@@ -65,6 +65,9 @@ from . import lua_nginx_module
 # Misc GitHub repos
 from . import misc_github
 
+# Misc static/pinned resources (SourceGuardian, IonCube, pcre, libmcrypt, etc.)
+from . import misc
+
 __all__ = [
     "BaseScraper",
     "Resource",
