@@ -10,21 +10,26 @@ from .github_utils import get_github_releases
 
 
 # Configuration for misc GitHub repos
+# Each entry: (owner, repo, meta_key, file_pattern, file_name_prefix)
+# - file_pattern: regex to match a release asset; None → use source tarball
+# - file_name_prefix: override the filename stem used for source tarballs;
+#   defaults to repo name when not provided / set to None.
 MISC_REPOS = [
-    # (owner, repo, meta_key, file_pattern)
-    ("jemalloc", "jemalloc", "jemalloc_ver", r"jemalloc-.*\.tar\.bz2"),
-    ("openresty", "lua-resty-core", "lua_resty_core_ver", None),
-    ("openresty", "lua-resty-lrucache", "lua_resty_lrucache_ver", None),
-    ("openresty", "luajit2", "luajit2_ver", None),
-    ("openresty", "lua-cjson", "lua_cjson_ver", None),
-    ("gperftools", "gperftools", None, r"gperftools-\d+\.\d+\.tar\.gz"),
-    ("unicode-org", "icu", "icu4c_ver", r"icu4c-.*-(?:src|sources?)\.tgz"),
-    ("nih-at", "libzip", "libzip_ver", r"libzip-.*\.tar\.gz"),
-    ("jedisct1", "libsodium", "libsodium_ver", r"libsodium-.*\.tar\.gz"),
-    ("P-H-C", "phc-winner-argon2", "argon2_ver", None),
-    ("libevent", "libevent", None, r"libevent-.*\.tar\.gz"),
-    ("vision5", "ngx_devel_kit", None, None),
-    ("kkos", "oniguruma", None, r"onig-.*\.tar\.gz"),
+    # (owner, repo, meta_key, file_pattern, file_name_prefix)
+    ("jemalloc", "jemalloc", "jemalloc_ver", r"jemalloc-.*\.tar\.bz2", None),
+    ("openresty", "lua-resty-core", "lua_resty_core_ver", None, None),
+    ("openresty", "lua-resty-lrucache", "lua_resty_lrucache_ver", None, None),
+    ("openresty", "luajit2", "luajit2_ver", None, None),
+    ("openresty", "lua-cjson", "lua_cjson_ver", None, None),
+    ("gperftools", "gperftools", None, r"gperftools-\d+\.\d+\.tar\.gz", None),
+    ("unicode-org", "icu", "icu4c_ver", r"icu4c-.*-(?:src|sources?)\.tgz", None),
+    ("nih-at", "libzip", "libzip_ver", r"libzip-.*\.tar\.gz", None),
+    ("jedisct1", "libsodium", "libsodium_ver", r"libsodium-.*\.tar\.gz", None),
+    # The GitHub repo is "phc-winner-argon2" but LNMP expects "argon2-{ver}.tar.gz"
+    ("P-H-C", "phc-winner-argon2", "argon2_ver", None, "argon2"),
+    ("libevent", "libevent", None, r"libevent-.*\.tar\.gz", None),
+    ("vision5", "ngx_devel_kit", None, None, None),
+    ("kkos", "oniguruma", None, r"onig-.*\.tar\.gz", None),
 ]
 
 
@@ -39,10 +44,10 @@ class MiscGithubScraper(BaseScraper):
         max_versions_setting: int = self.settings.get("misc_github_max_versions", 5)
         max_releases: int | None = max_versions_setting if max_versions_setting > 0 else None
         
-        for owner, repo, meta_key, file_pattern in MISC_REPOS:
+        for owner, repo, meta_key, file_pattern, file_name_prefix in MISC_REPOS:
             try:
                 await self._scrape_repo(
-                    owner, repo, meta_key, file_pattern, max_releases, result
+                    owner, repo, meta_key, file_pattern, file_name_prefix, max_releases, result
                 )
             except Exception:
                 # Intentionally continue with other repos - one failed repo shouldn't stop others
@@ -57,6 +62,7 @@ class MiscGithubScraper(BaseScraper):
         repo: str,
         meta_key: str | None,
         file_pattern: str | None,
+        file_name_prefix: str | None,
         max_releases: int | None,
         result: ScrapeResult,
     ) -> None:
@@ -92,8 +98,10 @@ class MiscGithubScraper(BaseScraper):
                             latest_version = version
                         break
             else:
-                # Use source tarball
-                file_name = f"{repo}-{version}.tar.gz"
+                # Use source tarball; allow a custom prefix to override the repo name
+                # (e.g. argon2: repo="phc-winner-argon2" but expected name is "argon2-…")
+                prefix = file_name_prefix if file_name_prefix else repo
+                file_name = f"{prefix}-{version}.tar.gz"
                 result.resources.append(Resource(
                     file_name=file_name,
                     url=f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz",
