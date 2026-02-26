@@ -84,8 +84,10 @@ class MiscGithubScraper(BaseScraper):
             assets = release.get("assets", [])
             
             if file_pattern and assets:
-                # Look for matching asset
+                # Collect ALL matching assets per release (some projects like libsodium
+                # publish multiple tarballs per release, e.g. mingw + regular .tar.gz)
                 pattern = re.compile(file_pattern)
+                matched_any = False
                 for asset in assets:
                     name = asset.get("name", "")
                     if pattern.search(name):
@@ -94,9 +96,9 @@ class MiscGithubScraper(BaseScraper):
                             url=asset["browser_download_url"],
                             version=version,
                         ))
-                        if latest_version is None:
-                            latest_version = version
-                        break
+                        matched_any = True
+                if matched_any and latest_version is None:
+                    latest_version = version
             else:
                 # Use source tarball; allow a custom prefix to override the repo name
                 # (e.g. argon2: repo="phc-winner-argon2" but expected name is "argon2-…")
