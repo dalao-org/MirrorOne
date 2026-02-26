@@ -43,6 +43,7 @@ from . import freetype
 from . import libiconv
 from . import boost
 from . import bison
+from . import binutils
 
 # Languages
 from . import python
