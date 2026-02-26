@@ -9,6 +9,18 @@ from .registry import registry
 from .github_utils import get_github_releases
 
 
+def _clean_version(version: str) -> str:
+    """Strip non-numeric tag suffixes such as -RELEASE, -stable, -LTS, etc.
+
+    Examples:
+        '1.0.21-RELEASE' → '1.0.21'
+        'v1.2.3-stable'  → '1.2.3'  (after lstrip('v') upstream)
+        '1.18.0'         → '1.18.0' (unchanged)
+    """
+    m = re.match(r'^(\d[\d.]*)', version)
+    return m.group(1).rstrip('.') if m else version
+
+
 # Configuration for misc GitHub repos
 # Each entry: (owner, repo, meta_key, file_pattern, file_name_prefix)
 # - file_pattern: regex to match a release asset; None → use source tarball
@@ -80,7 +92,7 @@ class MiscGithubScraper(BaseScraper):
         
         for release in releases:
             tag = release["tag_name"]
-            version = tag.lstrip("v")
+            version = _clean_version(tag.lstrip("v"))
             assets = release.get("assets", [])
             
             if file_pattern and assets:
