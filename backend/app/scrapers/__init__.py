@@ -39,6 +39,7 @@ from . import openssl
 from . import nghttp2
 from . import apr
 from . import imagemagick
+from . import graphicsmagick
 from . import freetype
 from . import libiconv
 from . import boost

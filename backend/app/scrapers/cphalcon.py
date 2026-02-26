@@ -1,7 +1,7 @@
 """
 Phalcon (cphalcon) PHP framework scraper.
 """
-from .base import BaseScraper, Resource, ScrapeResult
+from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 from .github_utils import get_github_releases
 
@@ -21,6 +21,7 @@ class CphalconScraper(BaseScraper):
             include_prerelease=False,
         )
         
+        latest_version = None
         for release in releases:
             tag = release["tag_name"]
             version = tag.lstrip("v")
@@ -29,6 +30,13 @@ class CphalconScraper(BaseScraper):
                 url=f"https://github.com/phalcon/cphalcon/archive/refs/tags/{tag}.tar.gz",
                 version=version,
             ))
-        
+            if latest_version is None:
+                latest_version = version
+
+        if latest_version:
+            result.version_metas.append(
+                VersionMeta(key="phalcon_ver", version=latest_version)
+            )
+
         result.success = True
         return result

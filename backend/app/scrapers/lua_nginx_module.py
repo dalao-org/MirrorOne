@@ -1,7 +1,7 @@
 """
 Lua Nginx module scraper.
 """
-from .base import BaseScraper, Resource, ScrapeResult
+from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 from .github_utils import get_github_tags, filter_blacklist
 
@@ -25,6 +25,7 @@ class LuaNginxModuleScraper(BaseScraper):
         # Filter out rc/beta/alpha versions
         tags = filter_blacklist(tags)
         
+        latest_version = None
         for tag in tags:
             version = tag.lstrip("v")
             result.resources.append(Resource(
@@ -32,6 +33,13 @@ class LuaNginxModuleScraper(BaseScraper):
                 url=f"https://github.com/openresty/lua-nginx-module/archive/refs/tags/{tag}.tar.gz",
                 version=version,
             ))
-        
+            if latest_version is None:
+                latest_version = version
+
+        if latest_version:
+            result.version_metas.append(
+                VersionMeta(key="lua_nginx_module_ver", version=latest_version)
+            )
+
         result.success = True
         return result

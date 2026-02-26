@@ -1,10 +1,18 @@
 """
 Pure-FTPd scraper.
 """
+import re
 from bs4 import BeautifulSoup
 
-from .base import BaseScraper, Resource, ScrapeResult
+from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
+
+
+def _version_key(version: str) -> tuple:
+    try:
+        return tuple(int(x) for x in re.split(r'[._-]', version))
+    except ValueError:
+        return (0,)
 
 
 @registry.register("pure_ftpd")
@@ -34,6 +42,12 @@ class PureFtpdScraper(BaseScraper):
                     url=url + href,
                     version=version,
                 ))
-        
+
+        if result.resources:
+            latest = max(result.resources, key=lambda r: _version_key(r.version))
+            result.version_metas.append(
+                VersionMeta(key="pureftpd_ver", version=latest.version)
+            )
+
         result.success = True
         return result

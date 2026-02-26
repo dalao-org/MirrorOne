@@ -1,7 +1,7 @@
 """
 Boost C++ libraries scraper.
 """
-from .base import BaseScraper, Resource, ScrapeResult
+from .base import BaseScraper, Resource, VersionMeta, ScrapeResult
 from .registry import registry
 from .github_utils import get_github_releases
 
@@ -25,10 +25,11 @@ class BoostScraper(BaseScraper):
             max_releases=max_versions,
         )
         
+        latest_version = None
         for release in releases:
             tag = release["tag_name"]
             version = tag.replace("boost-", "")
-            
+
             # Look for source tarball in assets
             for asset in release.get("assets", []):
                 name = asset.get("name", "")
@@ -47,6 +48,14 @@ class BoostScraper(BaseScraper):
                     url=f"https://github.com/boostorg/boost/archive/refs/tags/{tag}.tar.gz",
                     version=version,
                 ))
-        
+
+            if latest_version is None:
+                latest_version = version
+
+        if latest_version:
+            result.version_metas.append(
+                VersionMeta(key="boost_ver", version=latest_version)
+            )
+
         result.success = True
         return result

@@ -18,7 +18,11 @@ PECL_PACKAGES = [
     ("xdebug", "xdebug", "xdebug_ver", False),
     ("mongodb", "mongodb", "pecl_mongodb_ver", False),
     ("memcache", "memcache", "pecl_memcache_ver", False),
+    ("memcached", "memcached", "pecl_memcached_ver", False),
     ("yaf", "yaf", "yaf_ver", False),
+    ("yar", "yar", "yar_ver", False),
+    ("redis", "redis", "pecl_redis_ver", False),
+    ("ZendOpcache", "zendopcache", "zendopcache_ver", False),
     ("gmagick", "gmagick", "gmagick_ver", True),
     ("mongo", "mongo", "pecl_mongo_ver", False),
 ]
