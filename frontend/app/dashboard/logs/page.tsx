@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import styles from "@/app/_components/ui.module.css";
+import { InboxIcon } from "@/app/_components/Icons";
 
 interface ScrapeLog {
     id: number;
@@ -24,6 +25,7 @@ export default function LogsPage() {
     const router = useRouter();
     const [data, setData] = useState<LogsResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
 
     const getAuthHeaders = () => {
         const token = localStorage.getItem("access_token");
@@ -40,11 +42,11 @@ export default function LogsPage() {
             return;
         }
         fetchLogs();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router]);
 
     const fetchLogs = async () => {
         try {
-            // Use relative URL - Next.js rewrites will proxy to backend
             const response = await fetch("/api/scraper/logs?limit=100", {
                 headers: getAuthHeaders(),
             });
@@ -60,82 +62,111 @@ export default function LogsPage() {
             const result = await response.json();
             setData(result);
         } catch (err) {
-            console.error(err);
+            setError(err instanceof Error ? err.message : "Error loading logs");
         } finally {
             setLoading(false);
         }
     };
 
-    const getStatusColor = (status: string) => {
+    const getStatusBadge = (status: string) => {
         switch (status) {
-            case "success": return "#22c55e";
-            case "partial": return "#f59e0b";
-            case "failed": return "#ef4444";
-            default: return "#888";
+            case "success": return styles.badgeSuccess;
+            case "partial": return styles.badgeWarning;
+            case "failed": return styles.badgeDanger;
+            default: return styles.badgeNeutral;
         }
     };
 
-    const formatDate = (dateStr: string) => {
-        return new Date(dateStr).toLocaleString();
+    const getStatusDot = (status: string) => {
+        switch (status) {
+            case "success": return styles.dotSuccess;
+            case "partial": return styles.dotWarning;
+            case "failed": return styles.dotDanger;
+            default: return styles.dotNeutral;
+        }
     };
 
+    const formatDate = (dateStr: string) => new Date(dateStr).toLocaleString();
+
     if (loading) {
-        return <main className="container"><p>Loading...</p></main>;
+        return (
+            <div className={styles.stack} style={{ gap: "1.5rem" }}>
+                <div className={styles.skeleton} style={{ height: "1.75rem", width: "220px" }} />
+                <div className={styles.skeleton} style={{ height: "400px" }} />
+            </div>
+        );
     }
 
     return (
-        <main className="container">
-            <header style={{ marginBottom: "2rem" }}>
-                <Link href="/dashboard" style={{ color: "#888" }}>← Back to Dashboard</Link>
-                <h1 style={{ marginTop: "1rem" }}>📋 Scrape Logs ({data?.total || 0})</h1>
-            </header>
-
-            <div className="card">
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Time</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Scraper</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Status</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Resources</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Duration</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Error</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data?.logs.map((log) => (
-                            <tr key={log.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                                <td style={{ padding: "0.75rem", fontSize: "0.9rem" }}>
-                                    {formatDate(log.started_at)}
-                                </td>
-                                <td style={{ padding: "0.75rem" }}>{log.scraper_name}</td>
-                                <td style={{ padding: "0.75rem" }}>
-                                    <span style={{
-                                        background: getStatusColor(log.status),
-                                        color: "white",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "4px",
-                                        fontSize: "0.8rem",
-                                    }}>
-                                        {log.status}
-                                    </span>
-                                </td>
-                                <td style={{ padding: "0.75rem" }}>{log.resources_count}</td>
-                                <td style={{ padding: "0.75rem" }}>{log.duration_seconds.toFixed(2)}s</td>
-                                <td style={{ padding: "0.75rem", fontSize: "0.85rem", color: "#ef4444", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {log.error_message || "-"}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                {(!data?.logs || data.logs.length === 0) && (
-                    <p style={{ textAlign: "center", padding: "2rem", color: "#888" }}>
-                        No logs yet. Run a scrape to see results here.
+        <>
+            <div className={styles.pageHeader}>
+                <div>
+                    <h2 className={styles.pageHeading}>Scrape logs</h2>
+                    <p className={styles.pageDescription}>
+                        Last {data?.total ?? 0} scrape runs, most recent first.
                     </p>
+                </div>
+            </div>
+
+            {error && (
+                <div className={`${styles.alert} ${styles.alertDanger}`}>{error}</div>
+            )}
+
+            <div className={styles.card}>
+                {!data?.logs || data.logs.length === 0 ? (
+                    <div className={styles.emptyState}>
+                        <span className={styles.emptyIcon}><InboxIcon size={32} /></span>
+                        <span className={styles.emptyTitle}>No logs yet</span>
+                        <span className={styles.emptyText}>Run a scrape to see results here.</span>
+                    </div>
+                ) : (
+                    <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Scraper</th>
+                                    <th>Status</th>
+                                    <th>Resources</th>
+                                    <th>Duration</th>
+                                    <th>Error</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.logs.map((log) => (
+                                    <tr key={log.id}>
+                                        <td className={styles.tdMuted} style={{ fontSize: "0.8125rem" }}>
+                                            {formatDate(log.started_at)}
+                                        </td>
+                                        <td>{log.scraper_name}</td>
+                                        <td>
+                                            <span className={`${styles.badge} ${getStatusBadge(log.status)}`}>
+                                                <span className={`${styles.dot} ${getStatusDot(log.status)}`} />
+                                                {log.status}
+                                            </span>
+                                        </td>
+                                        <td className={styles.tdMono}>{log.resources_count}</td>
+                                        <td className={`${styles.tdMono} ${styles.tdMuted}`}>{log.duration_seconds.toFixed(2)}s</td>
+                                        <td
+                                            style={{
+                                                fontSize: "0.8125rem",
+                                                color: "var(--admin-danger)",
+                                                maxWidth: "300px",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                whiteSpace: "nowrap",
+                                            }}
+                                            title={log.error_message ?? undefined}
+                                        >
+                                            {log.error_message || "—"}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
-        </main>
+        </>
     );
 }

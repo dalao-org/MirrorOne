@@ -2,7 +2,17 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import styles from "@/app/_components/ui.module.css";
+import { useToast } from "@/app/_components/useToast";
+import { ToastContainer } from "@/app/_components/ToastContainer";
+import {
+    ClockIcon,
+    GearIcon,
+    TerminalIcon,
+    PlayIcon,
+    DownloadIcon,
+    XIcon,
+} from "@/app/_components/Icons";
 
 interface ScraperStatus {
     enabled: boolean;
@@ -25,6 +35,7 @@ export default function DashboardPage() {
     const [status, setStatus] = useState<ScraperStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const { toasts, showToast, dismissToast } = useToast();
 
     // WebSocket log console state
     const [showLogConsole, setShowLogConsole] = useState(false);
@@ -55,7 +66,6 @@ export default function DashboardPage() {
 
         ws.onopen = () => {
             setWsConnected(true);
-            console.log("WebSocket connected");
         };
 
         ws.onmessage = (event) => {
@@ -77,11 +87,9 @@ export default function DashboardPage() {
 
         ws.onclose = () => {
             setWsConnected(false);
-            console.log("WebSocket disconnected");
         };
 
-        ws.onerror = (err) => {
-            console.error("WebSocket error:", err);
+        ws.onerror = () => {
             setWsConnected(false);
         };
     }, []);
@@ -107,11 +115,11 @@ export default function DashboardPage() {
         }
 
         fetchStatus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router]);
 
     const fetchStatus = async () => {
         try {
-            // Use relative URL - Next.js rewrites will proxy to backend
             const response = await fetch("/api/scraper/status", {
                 headers: getAuthHeaders(),
             });
@@ -135,13 +143,6 @@ export default function DashboardPage() {
         }
     };
 
-    const handleLogout = () => {
-        disconnectWebSocket();
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("token_expires_at");
-        router.push("/login");
-    };
-
     const handleRunScrape = async () => {
         try {
             setLogs([]);
@@ -151,7 +152,6 @@ export default function DashboardPage() {
                 connectWebSocket();
             }
 
-            // Use relative URL - Next.js rewrites will proxy to backend
             const response = await fetch("/api/scraper/run", {
                 method: "POST",
                 headers: getAuthHeaders(),
@@ -160,8 +160,9 @@ export default function DashboardPage() {
             if (!response.ok) {
                 throw new Error("Failed to start scrape");
             }
+            showToast("Scrape started", "success");
         } catch (err) {
-            alert(err instanceof Error ? err.message : "Error starting scrape");
+            showToast(err instanceof Error ? err.message : "Error starting scrape", "error");
         }
     };
 
@@ -174,7 +175,6 @@ export default function DashboardPage() {
                 connectWebSocket();
             }
 
-            // Use relative URL - Next.js rewrites will proxy to backend
             const response = await fetch(`/api/scraper/recache?overwrite=${overwrite}&max_concurrent=5`, {
                 method: "POST",
                 headers: getAuthHeaders(),
@@ -183,296 +183,151 @@ export default function DashboardPage() {
             if (!response.ok) {
                 throw new Error("Failed to start re-cache");
             }
+            showToast(overwrite ? "Re-caching all resources" : "Re-caching missing resources", "success");
         } catch (err) {
-            alert(err instanceof Error ? err.message : "Error starting re-cache");
+            showToast(err instanceof Error ? err.message : "Error starting re-cache", "error");
         }
     };
 
     const getLogColor = (level: string) => {
         switch (level) {
-            case "success": return "#22c55e";
-            case "warning": return "#f59e0b";
-            case "error": return "#ef4444";
-            default: return "#94a3b8";
+            case "success": return "var(--admin-success)";
+            case "warning": return "var(--admin-warning)";
+            case "error": return "var(--admin-danger)";
+            default: return "var(--admin-text-muted)";
         }
     };
 
-    // Scraper capsule color based on name
+    // Scraper capsule color based on name (brand colors)
     const getCapsuleColor = (name: string) => {
         const colors: Record<string, string> = {
             nginx: "#009639",
             httpd: "#D22128",
             mysql: "#4479A1",
-            mariadb: "#003545",
+            mariadb: "#c0765a",
             postgresql: "#336791",
             redis: "#DC382D",
             php: "#777BB4",
             python: "#3776AB",
-            openssl: "#721412",
+            openssl: "#8a9aa8",
             curl: "#073551",
         };
-        return colors[name] || "#6366f1";
+        return colors[name] || "var(--admin-accent)";
     };
 
     if (loading) {
         return (
-            <main className="container">
-                <p>Loading...</p>
-            </main>
+            <div className={styles.stack} style={{ gap: "1.5rem" }}>
+                <div className={styles.skeleton} style={{ height: "1.75rem", width: "220px" }} />
+                <div style={{ display: "grid", gap: "1.5rem", gridTemplateColumns: "1fr 2fr" }}>
+                    <div className={styles.skeleton} style={{ height: "260px" }} />
+                    <div className={styles.skeleton} style={{ height: "260px" }} />
+                </div>
+            </div>
         );
     }
 
     return (
-        <main className="container" style={{ paddingTop: 0 }}>
-            {/* Top Navigation Bar */}
-            <nav style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "1rem 0",
-                borderBottom: "1px solid rgba(255,255,255,0.1)",
-                marginBottom: "2rem",
-            }}>
-                <h1 style={{ margin: 0, fontSize: "1.5rem" }}>📊 Dashboard</h1>
+        <>
+            <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-                {/* Navigation Links */}
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                    <Link
-                        href="/dashboard/settings"
-                        style={{
-                            padding: "0.5rem 1rem",
-                            borderRadius: "8px",
-                            background: "rgba(255,255,255,0.05)",
-                            color: "#e2e8f0",
-                            textDecoration: "none",
-                            fontSize: "0.875rem",
-                            transition: "all 0.2s",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                        }}
-                    >
-                        ⚙️ Settings
-                    </Link>
-                    <Link
-                        href="/dashboard/resources"
-                        style={{
-                            padding: "0.5rem 1rem",
-                            borderRadius: "8px",
-                            background: "rgba(255,255,255,0.05)",
-                            color: "#e2e8f0",
-                            textDecoration: "none",
-                            fontSize: "0.875rem",
-                            transition: "all 0.2s",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                        }}
-                    >
-                        📦 Resources
-                    </Link>
-                    <Link
-                        href="/dashboard/logs"
-                        style={{
-                            padding: "0.5rem 1rem",
-                            borderRadius: "8px",
-                            background: "rgba(255,255,255,0.05)",
-                            color: "#e2e8f0",
-                            textDecoration: "none",
-                            fontSize: "0.875rem",
-                            transition: "all 0.2s",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                        }}
-                    >
-                        📋 Logs
-                    </Link>
-                    <button
-                        onClick={handleLogout}
-                        className="btn"
-                        style={{
-                            background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)",
-                            padding: "0.5rem 1rem",
-                            fontSize: "0.875rem",
-                            marginLeft: "0.5rem",
-                        }}
-                    >
-                        Logout
-                    </button>
+            <div className={styles.pageHeader}>
+                <div>
+                    <h2 className={styles.pageHeading}>Overview</h2>
+                    <p className={styles.pageDescription}>
+                        Scheduler status, available scrapers, and live scrape activity.
+                    </p>
                 </div>
-            </nav>
+            </div>
 
             {error && (
-                <div style={{
-                    background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)",
-                    color: "white",
-                    padding: "0.75rem 1rem",
-                    borderRadius: "12px",
-                    marginBottom: "1.5rem",
-                }}>
-                    {error}
-                </div>
+                <div className={`${styles.alert} ${styles.alertDanger}`}>{error}</div>
             )}
 
             <div style={{ display: "grid", gap: "1.5rem", gridTemplateColumns: "1fr 2fr" }}>
                 {/* Scheduler Status */}
-                <div className="card" style={{
-                    background: "linear-gradient(135deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.9) 100%)",
-                    border: "1px solid rgba(99,102,241,0.2)",
-                }}>
-                    <h2 style={{ marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontSize: "1.5rem" }}>⏰</span>
-                        <span>Scheduler Status</span>
-                    </h2>
+                <div className={`${styles.card} ${styles.cardPad}`}>
+                    <div className={styles.cardHeader}>
+                        <h3 className={styles.cardTitle}>
+                            <span className={styles.cardIcon}><ClockIcon size={17} /></span>
+                            Scheduler
+                        </h3>
+                    </div>
                     {status && (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                            <div style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "0.5rem",
-                                padding: "0.5rem 0.75rem",
-                                background: status.enabled ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
-                                borderRadius: "8px",
-                                border: `1px solid ${status.enabled ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                            }}>
-                                <span style={{
-                                    width: "8px",
-                                    height: "8px",
-                                    borderRadius: "50%",
-                                    background: status.enabled ? "#22c55e" : "#ef4444",
-                                    boxShadow: `0 0 8px ${status.enabled ? "#22c55e" : "#ef4444"}`,
-                                }} />
-                                <span style={{ color: status.enabled ? "#22c55e" : "#ef4444", fontWeight: 500 }}>
-                                    {status.enabled ? "Auto-scrape Enabled" : "Auto-scrape Disabled"}
-                                </span>
-                            </div>
-                            <p style={{ margin: 0, color: "#94a3b8" }}>
-                                <strong style={{ color: "#e2e8f0" }}>Interval:</strong> {status.interval_hours} hours
+                        <div className={styles.stack} style={{ gap: "0.75rem" }}>
+                            <span className={`${styles.badge} ${status.enabled ? styles.badgeSuccess : styles.badgeDanger}`} style={{ width: "fit-content" }}>
+                                <span className={`${styles.dot} ${status.enabled ? styles.dotSuccess : styles.dotDanger}`} />
+                                {status.enabled ? "Auto-scrape enabled" : "Auto-scrape disabled"}
+                            </span>
+                            <p style={{ margin: 0, color: "var(--admin-text-muted)", fontSize: "0.875rem" }}>
+                                <strong style={{ color: "var(--admin-text)" }}>Interval:</strong> every {status.interval_hours}h
                             </p>
-                            <p style={{ margin: 0, color: "#94a3b8", fontSize: "0.875rem" }}>
-                                <strong style={{ color: "#e2e8f0" }}>Last run:</strong><br />
+                            <p style={{ margin: 0, color: "var(--admin-text-muted)", fontSize: "0.8125rem" }}>
+                                <strong style={{ color: "var(--admin-text)" }}>Last run:</strong><br />
                                 {status.last_run ? new Date(status.last_run).toLocaleString() : "Never"}
                             </p>
-                            <p style={{ margin: 0, color: "#94a3b8", fontSize: "0.875rem" }}>
-                                <strong style={{ color: "#e2e8f0" }}>Next run:</strong><br />
+                            <p style={{ margin: 0, color: "var(--admin-text-muted)", fontSize: "0.8125rem" }}>
+                                <strong style={{ color: "var(--admin-text)" }}>Next run:</strong><br />
                                 {status.next_run ? new Date(status.next_run).toLocaleString() : "Not scheduled"}
                             </p>
                         </div>
                     )}
+
                     <button
                         onClick={handleRunScrape}
-                        className="btn btn-primary"
-                        style={{
-                            marginTop: "1.5rem",
-                            width: "100%",
-                            background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)",
-                            padding: "0.75rem",
-                            fontSize: "1rem",
-                            fontWeight: 600,
-                        }}
+                        className={`${styles.btn} ${styles.btnPrimary} ${styles.btnBlock}`}
+                        style={{ marginTop: "1.25rem" }}
                     >
-                        🚀 Run Scrape Now
+                        <PlayIcon size={15} />
+                        Run scrape now
                     </button>
 
-                    {/* Re-cache buttons */}
-                    <div style={{ marginTop: "1rem" }}>
-                        <p style={{
-                            margin: "0 0 0.5rem 0",
-                            fontSize: "0.75rem",
-                            color: "#64748b",
-                            textAlign: "center",
-                        }}>
-                            📦 Re-cache (download without re-scraping)
+                    <div style={{ marginTop: "1.125rem" }}>
+                        <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.75rem", color: "var(--admin-text-faint)", textAlign: "center" }}>
+                            Re-cache (download without re-scraping)
                         </p>
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                             <button
                                 onClick={() => handleRecache(false)}
-                                className="btn"
-                                style={{
-                                    flex: 1,
-                                    background: "rgba(34,197,94,0.2)",
-                                    border: "1px solid rgba(34,197,94,0.4)",
-                                    color: "#22c55e",
-                                    padding: "0.5rem",
-                                    fontSize: "0.75rem",
-                                }}
+                                className={`${styles.btn} ${styles.btnSuccess} ${styles.btnSm}`}
+                                style={{ flex: 1 }}
                             >
-                                Skip Existing
+                                Skip existing
                             </button>
                             <button
                                 onClick={() => handleRecache(true)}
-                                className="btn"
-                                style={{
-                                    flex: 1,
-                                    background: "rgba(239,68,68,0.2)",
-                                    border: "1px solid rgba(239,68,68,0.4)",
-                                    color: "#ef4444",
-                                    padding: "0.5rem",
-                                    fontSize: "0.75rem",
-                                }}
+                                className={`${styles.btn} ${styles.btnDanger} ${styles.btnSm}`}
+                                style={{ flex: 1 }}
                             >
-                                Overwrite All
+                                <DownloadIcon size={13} />
+                                Overwrite all
                             </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Available Scrapers - Capsule Style */}
-                <div className="card" style={{
-                    background: "linear-gradient(135deg, rgba(30,41,59,0.8) 0%, rgba(15,23,42,0.9) 100%)",
-                    border: "1px solid rgba(99,102,241,0.2)",
-                }}>
-                    <h2 style={{ marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ fontSize: "1.5rem" }}>🔧</span>
-                        <span>Available Scrapers</span>
+                {/* Available Scrapers */}
+                <div className={`${styles.card} ${styles.cardPad}`}>
+                    <div className={styles.cardHeader}>
+                        <h3 className={styles.cardTitle}>
+                            <span className={styles.cardIcon}><GearIcon size={17} /></span>
+                            Available scrapers
+                        </h3>
                         {status && (
-                            <span style={{
-                                marginLeft: "auto",
-                                fontSize: "0.875rem",
-                                padding: "0.25rem 0.75rem",
-                                borderRadius: "9999px",
-                                background: "rgba(99,102,241,0.2)",
-                                color: "#a5b4fc",
-                            }}>
-                                {status.available_scrapers.length} scrapers
+                            <span className={`${styles.badge} ${styles.badgeNeutral}`}>
+                                {status.available_scrapers.length} total
                             </span>
                         )}
-                    </h2>
+                    </div>
                     {status && (
-                        <div style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: "0.5rem",
-                            maxHeight: "280px",
-                            overflowY: "auto",
-                            padding: "0.5rem 0",
-                        }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", maxHeight: "280px", overflowY: "auto", padding: "0.25rem 0" }}>
                             {status.available_scrapers.map((scraper) => (
                                 <span
                                     key={scraper}
-                                    style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        padding: "0.375rem 0.875rem",
-                                        borderRadius: "9999px",
-                                        background: `linear-gradient(135deg, ${getCapsuleColor(scraper)}33 0%, ${getCapsuleColor(scraper)}22 100%)`,
-                                        border: `1px solid ${getCapsuleColor(scraper)}66`,
-                                        color: "#e2e8f0",
-                                        fontSize: "0.8125rem",
-                                        fontWeight: 500,
-                                        transition: "all 0.2s",
-                                        cursor: "default",
-                                    }}
+                                    className={styles.pill}
+                                    style={{ "--pc": getCapsuleColor(scraper) } as React.CSSProperties}
                                 >
-                                    <span style={{
-                                        width: "6px",
-                                        height: "6px",
-                                        borderRadius: "50%",
-                                        background: getCapsuleColor(scraper),
-                                        marginRight: "0.5rem",
-                                        boxShadow: `0 0 6px ${getCapsuleColor(scraper)}`,
-                                    }} />
+                                    <span className={styles.pillDot} />
                                     {scraper}
                                 </span>
                             ))}
@@ -483,83 +338,45 @@ export default function DashboardPage() {
 
             {/* Real-time Log Console */}
             {showLogConsole && (
-                <div className="card" style={{
-                    marginTop: "1.5rem",
-                    background: "linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(2,6,23,0.98) 100%)",
-                    border: "1px solid rgba(99,102,241,0.2)",
-                }}>
-                    <div style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "1rem",
-                    }}>
-                        <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                            <span>📺 Live Logs</span>
-                            <span style={{
-                                fontSize: "0.75rem",
-                                padding: "0.25rem 0.75rem",
-                                borderRadius: "9999px",
-                                background: wsConnected
-                                    ? "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
-                                    : "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                                color: "white",
-                                fontWeight: 500,
-                            }}>
-                                {wsConnected ? "● Connected" : "○ Disconnected"}
+                <div className={`${styles.card} ${styles.cardPad}`} style={{ marginTop: "1.5rem" }}>
+                    <div className={styles.cardHeader}>
+                        <h3 className={styles.cardTitle}>
+                            <span className={styles.cardIcon}><TerminalIcon size={17} /></span>
+                            Live logs
+                            <span className={`${styles.badge} ${wsConnected ? styles.badgeSuccess : styles.badgeDanger}`}>
+                                <span className={`${styles.dot} ${wsConnected ? styles.dotSuccess : styles.dotDanger}`} />
+                                {wsConnected ? "Connected" : "Disconnected"}
                             </span>
-                        </h2>
+                        </h3>
                         <button
                             onClick={() => {
                                 setShowLogConsole(false);
                                 disconnectWebSocket();
                             }}
-                            className="btn"
-                            style={{
-                                background: "rgba(239,68,68,0.2)",
-                                border: "1px solid rgba(239,68,68,0.5)",
-                                color: "#fca5a5",
-                                padding: "0.375rem 1rem",
-                                fontSize: "0.875rem",
-                            }}
+                            className={`${styles.btn} ${styles.btnGhost} ${styles.btnSm}`}
                         >
-                            ✕ Close
+                            <XIcon size={14} />
+                            Close
                         </button>
                     </div>
-                    <div
-                        ref={logContainerRef}
-                        style={{
-                            background: "#020617",
-                            borderRadius: "8px",
-                            padding: "1rem",
-                            maxHeight: "400px",
-                            overflowY: "auto",
-                            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                            fontSize: "0.8125rem",
-                            lineHeight: "1.6",
-                            border: "1px solid rgba(255,255,255,0.05)",
-                        }}
-                    >
+                    <div ref={logContainerRef} className={styles.logConsole}>
                         {logs.length === 0 ? (
-                            <p style={{ color: "#475569", margin: 0, fontStyle: "italic" }}>
-                                Waiting for logs...
+                            <p style={{ color: "var(--admin-text-faint)", margin: 0, fontStyle: "italic" }}>
+                                Waiting for logs…
                             </p>
                         ) : (
                             logs.map((log, index) => (
-                                <div key={index} style={{ marginBottom: "0.25rem" }}>
-                                    <span style={{ color: "#475569" }}>
+                                <div key={index} className={styles.logLine}>
+                                    <span className={styles.logTime}>
                                         {log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : ""}
                                     </span>
-                                    {" "}
-                                    <span style={{ color: getLogColor(log.level) }}>
-                                        {log.message}
-                                    </span>
+                                    <span style={{ color: getLogColor(log.level) }}>{log.message}</span>
                                 </div>
                             ))
                         )}
                     </div>
                 </div>
             )}
-        </main>
+        </>
     );
 }

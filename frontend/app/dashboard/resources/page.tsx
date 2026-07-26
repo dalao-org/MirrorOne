@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import styles from "@/app/_components/ui.module.css";
+import { SearchIcon, ExternalLinkIcon, InboxIcon } from "@/app/_components/Icons";
 
 interface Resource {
     file_name: string;
@@ -21,6 +22,7 @@ export default function ResourcesPage() {
     const router = useRouter();
     const [data, setData] = useState<ResourcesResponse | null>(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
     const [filter, setFilter] = useState("");
     const [sourceFilter, setSourceFilter] = useState("");
 
@@ -39,11 +41,11 @@ export default function ResourcesPage() {
             return;
         }
         fetchResources();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router]);
 
     const fetchResources = async () => {
         try {
-            // Use relative URL - Next.js rewrites will proxy to backend
             const response = await fetch("/api/resources", {
                 headers: getAuthHeaders(),
             });
@@ -59,7 +61,7 @@ export default function ResourcesPage() {
             const result = await response.json();
             setData(result);
         } catch (err) {
-            console.error(err);
+            setError(err instanceof Error ? err.message : "Error loading resources");
         } finally {
             setLoading(false);
         }
@@ -74,33 +76,54 @@ export default function ResourcesPage() {
     const sources = [...new Set(data?.resources.map((r) => r.source) || [])];
 
     if (loading) {
-        return <main className="container"><p>Loading...</p></main>;
+        return (
+            <div className={styles.stack} style={{ gap: "1.5rem" }}>
+                <div className={styles.skeleton} style={{ height: "1.75rem", width: "220px" }} />
+                <div className={styles.skeleton} style={{ height: "56px" }} />
+                <div className={styles.skeleton} style={{ height: "360px" }} />
+            </div>
+        );
     }
 
     return (
-        <main className="container">
-            <header style={{ marginBottom: "2rem" }}>
-                <Link href="/dashboard" style={{ color: "#888" }}>← Back to Dashboard</Link>
-                <h1 style={{ marginTop: "1rem" }}>📦 Resources ({data?.total || 0})</h1>
-            </header>
+        <>
+            <div className={styles.pageHeader}>
+                <div>
+                    <h2 className={styles.pageHeading}>Resources</h2>
+                    <p className={styles.pageDescription}>
+                        {data?.total ?? 0} mirrored files across {sources.length} sources.
+                    </p>
+                </div>
+            </div>
 
-            <div className="card" style={{ marginBottom: "1.5rem" }}>
+            {error && (
+                <div className={`${styles.alert} ${styles.alertDanger}`}>{error}</div>
+            )}
+
+            <div className={`${styles.card} ${styles.cardPad}`} style={{ marginBottom: "1.25rem" }}>
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                    <input
-                        type="text"
-                        className="input"
-                        placeholder="Filter by filename..."
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                        style={{ flex: 1, minWidth: "200px" }}
-                    />
+                    <div style={{ position: "relative", flex: 1, minWidth: "220px" }}>
+                        <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--admin-text-faint)", display: "flex" }}>
+                            <SearchIcon size={16} />
+                        </span>
+                        <input
+                            type="text"
+                            className={styles.input}
+                            placeholder="Filter by filename…"
+                            aria-label="Filter by filename"
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            style={{ paddingLeft: "2.25rem" }}
+                        />
+                    </div>
                     <select
-                        className="input"
+                        className={styles.select}
+                        aria-label="Filter by source"
                         value={sourceFilter}
                         onChange={(e) => setSourceFilter(e.target.value)}
-                        style={{ width: "auto" }}
+                        style={{ width: "auto", minWidth: "160px" }}
                     >
-                        <option value="">All Sources</option>
+                        <option value="">All sources</option>
                         {sources.map((source) => (
                             <option key={source} value={source}>{source}</option>
                         ))}
@@ -108,49 +131,52 @@ export default function ResourcesPage() {
                 </div>
             </div>
 
-            <div className="card">
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Filename</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Version</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>Source</th>
-                            <th style={{ textAlign: "left", padding: "0.75rem" }}>URL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredResources.map((resource) => (
-                            <tr key={resource.file_name} style={{ borderBottom: "1px solid var(--border)" }}>
-                                <td style={{ padding: "0.75rem", fontFamily: "monospace", fontSize: "0.9rem" }}>
-                                    {resource.file_name}
-                                </td>
-                                <td style={{ padding: "0.75rem" }}>{resource.version}</td>
-                                <td style={{ padding: "0.75rem" }}>
-                                    <span style={{
-                                        background: "#333",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "4px",
-                                        fontSize: "0.8rem",
-                                    }}>
-                                        {resource.source}
-                                    </span>
-                                </td>
-                                <td style={{ padding: "0.75rem" }}>
-                                    <a href={resource.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.9rem" }}>
-                                        View →
-                                    </a>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                {filteredResources.length === 0 && (
-                    <p style={{ textAlign: "center", padding: "2rem", color: "#888" }}>
-                        No resources found
-                    </p>
+            <div className={styles.card}>
+                {filteredResources.length === 0 ? (
+                    <div className={styles.emptyState}>
+                        <span className={styles.emptyIcon}><InboxIcon size={32} /></span>
+                        <span className={styles.emptyTitle}>No resources found</span>
+                        <span className={styles.emptyText}>
+                            {data && data.total > 0 ? "Try a different filter." : "Run a scrape first to populate the mirror."}
+                        </span>
+                    </div>
+                ) : (
+                    <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                            <thead>
+                                <tr>
+                                    <th>Filename</th>
+                                    <th>Version</th>
+                                    <th>Source</th>
+                                    <th>URL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredResources.map((resource) => (
+                                    <tr key={resource.file_name}>
+                                        <td className={styles.tdMono}>{resource.file_name}</td>
+                                        <td className={`${styles.tdMono} ${styles.tdMuted}`}>{resource.version}</td>
+                                        <td>
+                                            <span className={`${styles.badge} ${styles.badgeNeutral}`}>{resource.source}</span>
+                                        </td>
+                                        <td>
+                                            <a
+                                                href={resource.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className={styles.link}
+                                                style={{ display: "inline-flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem" }}
+                                            >
+                                                View <ExternalLinkIcon size={13} />
+                                            </a>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
             </div>
-        </main>
+        </>
     );
 }
