@@ -88,6 +88,8 @@ class PHPScraper(BaseScraper):
                         version=version,
                         checksum=sha256,
                         checksum_type="sha256" if sha256 else None,
+                        channel="supported",
+                        checksum_source_url=url,
                     ))
         
         return resources
@@ -128,6 +130,8 @@ class PHPScraper(BaseScraper):
                         version=version,
                         checksum=sha256,
                         checksum_type="sha256" if sha256 else None,
+                        channel="archive",
+                        checksum_source_url=url,
                     ))
         
         return resources

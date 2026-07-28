@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
                 source: "/src/:path*",
                 destination: `${backendUrl}/src/:path*`,
             },
+            {
+                source: "/oneinstack/src/:path*",
+                destination: `${backendUrl}/oneinstack/src/:path*`,
+            },
+            {
+                source: "/manifests/:path*",
+                destination: `${backendUrl}/manifests/:path*`,
+            },
             // Proxy /api (REST API)
             {
                 source: "/api/:path*",

@@ -135,6 +135,9 @@ async def recache_resources(
             f"✅ Re-cache completed: {stats['downloaded']} downloaded, {stats['skipped']} skipped, {stats['failed']} failed / {stats['total']}",
             level=LogLevel.SUCCESS if stats['failed'] == 0 else LogLevel.WARNING,
         )
+        if settings.get("manifest_enabled", True):
+            from app.manifests.service import rebuild_manifest
+            await rebuild_manifest(settings)
     
     background_tasks.add_task(run_recache)
     

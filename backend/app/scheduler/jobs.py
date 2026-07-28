@@ -1,16 +1,17 @@
 """
 Scheduler jobs for periodic scraping.
 """
+import asyncio
 import logging
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app import redis_client
-from app.scrapers.registry import registry
-from app.scrapers.base import ScrapeResult
+from app.core.log_broadcaster import LogLevel, broadcaster
 from app.database import get_db_session
 from app.models.scrape_log import ScrapeLog
-from app.core.log_broadcaster import broadcaster, LogLevel
+from app.scrapers.base import ScrapeResult
+from app.scrapers.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -47,17 +48,32 @@ async def update_redis_from_result(result: ScrapeResult, settings: dict[str, Any
     if not result.success and not result.resources:
         return
     
-    # Delete old rules from this source
-    await redis_client.delete_redirect_rules_by_source(result.scraper_name)
-    
-    # Add new rules
+    resources = []
     for resource in result.resources:
-        await redis_client.set_redirect_rule(
+        resources.append(dict(
             filename=resource.file_name,
             url=resource.url,
             version=resource.version,
             source=result.scraper_name,
-        )
+            checksum=resource.checksum,
+            checksum_type=resource.checksum_type,
+            checksums=resource.checksums,
+            kind=resource.kind,
+            platform={
+                "os": resource.os,
+                "arch": resource.arch,
+                "libc": resource.libc,
+            },
+            channel=resource.channel,
+            aliases=resource.aliases,
+            checksum_source_url=resource.checksum_source_url,
+            checksum_unavailable_reason=resource.checksum_unavailable_reason,
+            component=resource.component,
+        ))
+    await redis_client.replace_redirect_rules_for_source(
+        result.scraper_name,
+        resources,
+    )
     
     # Update version metas
     for meta in result.version_metas:
@@ -85,7 +101,14 @@ async def download_cache_for_result(result: ScrapeResult, settings: dict[str, An
     
     # Convert resources to dicts for parallel download
     resources = [
-        {"url": r.url, "file_name": r.file_name, "source": result.scraper_name}
+        {
+            "url": r.url,
+            "file_name": r.file_name,
+            "source": result.scraper_name,
+            "checksums": r.checksums,
+            "checksum": r.checksum,
+            "checksum_type": r.checksum_type,
+        }
         for r in result.resources
     ]
     
@@ -110,6 +133,86 @@ async def download_cache_for_result(result: ScrapeResult, settings: dict[str, An
         level=LogLevel.SUCCESS if stats['failed'] == 0 else LogLevel.WARNING,
         scraper=result.scraper_name,
     )
+
+
+async def _update_redis_with_manifest_lock(
+    results: list[ScrapeResult],
+    settings: dict[str, Any],
+) -> bool:
+    """Apply scraper metadata only when this job owns the snapshot lock."""
+    try:
+        token = await redis_client.begin_manifest_metadata_update()
+    except RuntimeError as exc:
+        logger.warning("Skipping metadata update and manifest rebuild: %s", exc)
+        await broadcaster.broadcast(
+            "⚠️ Another metadata update is active; "
+            "skipping Redis publication and Manifest rebuild",
+            level=LogLevel.WARNING,
+        )
+        return False
+
+    stop_heartbeat = asyncio.Event()
+    lock_lost = asyncio.Event()
+
+    async def refresh_lock_periodically() -> None:
+        interval = max(
+            1,
+            redis_client.MANIFEST_METADATA_UPDATE_TTL_SECONDS // 3,
+        )
+        while not stop_heartbeat.is_set():
+            try:
+                await asyncio.wait_for(stop_heartbeat.wait(), timeout=interval)
+                return
+            except TimeoutError:
+                try:
+                    refreshed = (
+                        await redis_client.refresh_manifest_metadata_update(token)
+                    )
+                except Exception:
+                    logger.exception("Unable to refresh artifact metadata lock")
+                    lock_lost.set()
+                    return
+                if not refreshed:
+                    lock_lost.set()
+                    return
+
+    heartbeat_task = asyncio.create_task(refresh_lock_periodically())
+    partial = False
+    try:
+        for result in results:
+            if lock_lost.is_set():
+                raise RuntimeError("artifact metadata update lock was lost")
+            if not await redis_client.refresh_manifest_metadata_update(token):
+                raise RuntimeError("artifact metadata update lock was lost")
+            try:
+                await update_redis_from_result(result, settings)
+            except ValueError as exc:
+                partial = True
+                logger.warning(
+                    "Skipping invalid metadata from scraper %s: %s",
+                    result.scraper_name,
+                    exc,
+                )
+                await broadcaster.broadcast(
+                    f"⚠️ {result.scraper_name}: metadata was not published: {exc}",
+                    level=LogLevel.WARNING,
+                    scraper=result.scraper_name,
+                )
+                continue
+            if lock_lost.is_set():
+                raise RuntimeError("artifact metadata update lock was lost")
+        return not partial
+    except RuntimeError as exc:
+        logger.warning("Metadata update did not complete: %s", exc)
+        await broadcaster.broadcast(
+            f"⚠️ Metadata update did not complete: {exc}",
+            level=LogLevel.WARNING,
+        )
+        return False
+    finally:
+        stop_heartbeat.set()
+        await heartbeat_task
+        await redis_client.end_manifest_metadata_update(token)
 
 
 async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
@@ -145,6 +248,7 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
     
     # Run all scrapers
     results = await registry.run_all(settings)
+    metadata_updated = await _update_redis_with_manifest_lock(results, settings)
     
     # Process results
     success_count = 0
@@ -185,9 +289,6 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
                 scraper=result.scraper_name,
             )
         
-        # Update Redis
-        await update_redis_from_result(result, settings)
-        
         # Save log
         await save_scrape_log(result)
     
@@ -212,6 +313,12 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
             "✅ Cache download phase completed",
             level=LogLevel.SUCCESS,
         )
+
+    if metadata_updated and settings.get("manifest_enabled", True) and settings.get(
+        "manifest_rebuild_after_scrape", True
+    ):
+        from app.manifests.service import rebuild_manifest
+        await rebuild_manifest(settings)
     
     return results
 
@@ -273,10 +380,15 @@ async def run_single_scraper_job(scraper_name: str, settings: dict[str, Any]) ->
             scraper=result.scraper_name,
         )
     
-    # Update Redis
-    await update_redis_from_result(result, settings)
+    metadata_updated = await _update_redis_with_manifest_lock([result], settings)
     
     # Save log
     await save_scrape_log(result)
+
+    if metadata_updated and settings.get("manifest_enabled", True) and settings.get(
+        "manifest_rebuild_after_scrape", True
+    ):
+        from app.manifests.service import rebuild_manifest
+        await rebuild_manifest(settings)
     
     return result

@@ -3,21 +3,23 @@ FastAPI application entry point.
 """
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import init_db, close_db, get_db_session
-from app.redis_client import get_redis, close_redis
-from app.services import auth_service, setting_service
-from app.scheduler import start_scheduler, stop_scheduler
+from app.database import close_db, get_db_session, init_db
+from app.redis_client import close_redis, get_redis, migrate_redis_schema
 from app.routers import (
     auth_router,
-    settings_router,
-    resources_router,
+    manifests_router,
     redirect_router,
+    resources_router,
     scraper_router,
+    settings_router,
 )
+from app.scheduler import start_scheduler, stop_scheduler
+from app.services import auth_service, setting_service
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +49,10 @@ async def lifespan(app: FastAPI):
     await get_redis()
     logger.info("Redis connection established")
     
+    await migrate_redis_schema()
+    logger.info("Redis schema migration complete")
+
+    database_settings = {}
     # Create admin user if not exists
     async with get_db_session() as db:
         existing_admin = await auth_service.get_user_by_username(db, settings.ADMIN_USERNAME)
@@ -61,6 +67,15 @@ async def lifespan(app: FastAPI):
         # Initialize default settings
         await setting_service.init_default_settings(db)
         logger.info("Default settings initialized")
+        database_settings = await setting_service.get_all_settings(db)
+
+    from app.manifests.service import rebuild_manifest
+    manifest_status = await rebuild_manifest(database_settings)
+    if manifest_status.get("state") == "degraded":
+        logger.warning(
+            "Manifest startup build degraded; last-known-good availability=%s",
+            manifest_status.get("serving_last_known_good"),
+        )
     
     # Start scheduler
     await start_scheduler()
@@ -84,7 +99,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     description="OneinStack Mirror Generator API - Provides redirect rules for software packages",
-    version="2.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
@@ -106,6 +121,16 @@ app.include_router(settings_router)
 app.include_router(resources_router)
 app.include_router(scraper_router)
 app.include_router(redirect_router)
+app.include_router(manifests_router)
+
+
+def _public_manifest_health(manifest_status: dict) -> dict:
+    """Project authenticated Manifest status onto the public health contract."""
+    return {
+        "state": manifest_status.get("state", "unknown"),
+        "revision": manifest_status.get("revision"),
+        "last_success": manifest_status.get("last_success"),
+    }
 
 
 @app.get("/health")
@@ -115,10 +140,11 @@ async def health_check():
     
     Includes scraper status information.
     """
+    from sqlalchemy import desc, select
+
     from app import redis_client
     from app.database import get_db_session
     from app.models.scrape_log import ScrapeLog
-    from sqlalchemy import select, desc
     
     # Get scheduler times from Redis
     scheduler_times = await redis_client.get_scheduler_times()
@@ -137,9 +163,17 @@ async def health_check():
             if log and log.finished_at:
                 last_success = log.finished_at.isoformat()
     except Exception:
-        # Intentionally ignore - health check should return even if DB query fails
-        pass
+        logger.debug("Health check could not query the latest scrape", exc_info=True)
     
+    manifest_status = {}
+    try:
+        manifest_status = await redis_client.get_manifest_status()
+    except Exception:
+        manifest_status = {
+            "state": "degraded",
+            "last_error": "manifest status unavailable",
+        }
+
     # Get mirror_type setting
     mirror_type = "redirect"
     try:
@@ -148,16 +182,20 @@ async def health_check():
             settings_dict = await setting_service.get_all_settings(db)
             mirror_type = settings_dict.get("mirror_type", "redirect")
     except Exception:
-        # Intentionally ignore - use default value if settings query fails
-        pass
+        logger.debug("Health check is using the default mirror mode", exc_info=True)
     
     return {
-        "status": "healthy",
-        "version": "2.0.0",
+        "status": (
+            "degraded"
+            if manifest_status.get("state") == "degraded"
+            else "healthy"
+        ),
+        "version": settings.APP_VERSION,
         "mirror_type": mirror_type,
         "last_scrape": scheduler_times.get("last_run"),
         "last_success": last_success,
         "next_scrape": scheduler_times.get("next_run"),
+        "manifest": _public_manifest_health(manifest_status),
     }
 
 
@@ -168,7 +206,7 @@ async def root():
     """
     return {
         "name": settings.APP_NAME,
-        "version": "2.0.0",
+        "version": settings.APP_VERSION,
         "description": "OneinStack Mirror Generator API",
         "docs": "/docs" if settings.DEBUG else "Disabled in production",
     }

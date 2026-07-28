@@ -28,6 +28,8 @@ class PhpPatchesScraper(BaseScraper):
                 file_name=patch["file_name"],
                 url=patch["url"],
                 version=patch["version"],
+                kind="patch",
+                component="php-fpm",
             ))
         
         result.success = True

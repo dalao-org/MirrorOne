@@ -10,6 +10,7 @@ from app.services import cache_service
 from app import redis_client
 from app.database import get_db_session
 from app.services import setting_service
+from app.manifests.validator import validate_filename
 
 router = APIRouter(tags=["Redirect"])
 
@@ -33,17 +34,25 @@ async def redirect_file(filename: str, force_redirect: bool = False):
     Query parameters:
     - force_redirect: If True, always redirect to original URL (bypass cache mode)
     """
+    try:
+        filename = validate_filename(filename)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found",
+        ) from None
     settings = await get_mirror_settings()
     mirror_type = settings.get("mirror_type", "redirect")
     
     # Check if file exists in rules
-    url = await redirect_service.get_redirect_url(filename)
+    rule = await redirect_service.get_redirect_rule(filename)
     
-    if url is None:
+    if rule is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"File '{filename}' not found in redirect rules",
         )
+    url = rule["url"]
     
     # Force redirect mode if requested
     if force_redirect:
@@ -52,12 +61,17 @@ async def redirect_file(filename: str, force_redirect: bool = False):
     # Cache mode: serve from local cache
     if mirror_type == "cache":
         cache_path = cache_service.get_cache_path(settings)
-        cached = cache_service.find_cached_file(cache_path, filename)
+        cache_filename = rule.get("_canonical_filename", filename)
+        source = rule.get("source", "unknown")
+        cached_path = cache_service.get_cached_file_path(
+            cache_path,
+            source,
+            cache_filename,
+        )
         
-        if cached:
-            file_path, source = cached
+        if cached_path:
             return FileResponse(
-                path=str(file_path),
+                path=str(cached_path),
                 filename=filename,
                 media_type="application/octet-stream",
             )

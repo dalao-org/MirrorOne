@@ -1,7 +1,14 @@
 """
 Redirect service for handling file redirects.
 """
+import asyncio
+import logging
+
 from app import redis_client
+from app.manifests.validator import validate_source_url
+
+
+logger = logging.getLogger(__name__)
 
 
 async def get_redirect_url(filename: str) -> str | None:
@@ -14,9 +21,22 @@ async def get_redirect_url(filename: str) -> str | None:
     Returns:
         Redirect URL or None if not found
     """
-    rule = await redis_client.get_redirect_url(filename)
+    rule = await get_redirect_rule(filename)
     if rule:
         return rule.get("url")
+    return None
+
+
+async def get_redirect_rule(filename: str) -> dict | None:
+    """Get and security-check the complete canonical or alias rule."""
+    rule = await redis_client.get_redirect_url(filename)
+    if rule:
+        url = rule.get("url")
+        try:
+            rule["url"] = validate_source_url(url)
+            return rule
+        except (TypeError, ValueError):
+            logger.error("Rejected unsafe redirect target for filename=%s", filename)
     return None
 
 
@@ -59,6 +79,13 @@ async def get_suggest_versions_content() -> str:
     Returns:
         String content for suggest_versions.txt
     """
-    versions = await redis_client.get_all_version_metas()
+    from app.manifests.service import get_publisher
+
+    snapshot = await asyncio.to_thread(get_publisher().read_current)
+    versions = (
+        snapshot.get("version_recommendations", {})
+        if snapshot
+        else await redis_client.get_all_version_metas()
+    )
     lines = [f"{key}={value}" for key, value in sorted(versions.items())]
     return "\n".join(lines)

@@ -90,6 +90,10 @@ class MariaDBScraper(BaseScraper):
                     version=release_data.get("release_id", release_id),
                     checksum=checksum.get("md5sum"),
                     checksum_type="md5" if checksum.get("md5sum") else None,
+                    kind="binary",
+                    os="linux",
+                    arch="x86_64",
+                    checksum_source_url=url,
                 ))
                 
                 if latest_version is None:

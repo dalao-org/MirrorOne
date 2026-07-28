@@ -107,6 +107,7 @@ class MiscGithubScraper(BaseScraper):
                             file_name=name,
                             url=asset["browser_download_url"],
                             version=version,
+                            component=(file_name_prefix or repo).lower(),
                         ))
                         matched_any = True
                 if matched_any and latest_version is None:
@@ -120,6 +121,7 @@ class MiscGithubScraper(BaseScraper):
                     file_name=file_name,
                     url=f"https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.tar.gz",
                     version=version,
+                    component=prefix.lower(),
                 ))
                 if latest_version is None:
                     latest_version = version

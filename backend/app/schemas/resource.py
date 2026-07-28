@@ -1,7 +1,7 @@
 """
 Resource schemas.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -28,6 +28,13 @@ class RedirectRule(BaseModel):
     url: str
     version: str
     source: str
+    checksum: str | None = None
+    checksum_type: str | None = None
+    checksums: dict[str, str] = Field(default_factory=dict)
+    kind: str = "source"
+    platform: dict = Field(default_factory=dict)
+    channel: str = "unknown"
+    aliases: list[str] = Field(default_factory=list)
     updated_at: str
 
 

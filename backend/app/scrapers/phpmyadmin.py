@@ -56,6 +56,7 @@ class PhpMyAdminScraper(BaseScraper):
                     version=version,
                     checksum=sha256,
                     checksum_type="sha256" if sha256 else None,
+                    checksum_source_url=url,
                 ))
                 versions_found.append(version)
         

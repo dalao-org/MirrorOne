@@ -12,6 +12,7 @@ import {
     PlayIcon,
     DownloadIcon,
     XIcon,
+    BoxIcon,
 } from "@/app/_components/Icons";
 
 interface ScraperStatus {
@@ -30,9 +31,31 @@ interface LogMessage {
     type?: string;
 }
 
+interface ManifestStatus {
+    state: "healthy" | "degraded" | "disabled";
+    revision?: string | null;
+    last_success?: string | null;
+    last_error?: string | null;
+    checksum_coverage_percent?: number;
+    cache_coverage_percent?: number;
+    statistics?: {
+        artifact_count: number;
+        with_upstream_checksum: number;
+        cached: number;
+        conflict_count: number;
+    };
+    recent_events?: Array<{
+        event: string;
+        filename?: string;
+        timestamp?: string;
+    }>;
+}
+
 export default function DashboardPage() {
     const router = useRouter();
     const [status, setStatus] = useState<ScraperStatus | null>(null);
+    const [manifestStatus, setManifestStatus] = useState<ManifestStatus | null>(null);
+    const [rebuildingManifest, setRebuildingManifest] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const { toasts, showToast, dismissToast } = useToast();
@@ -120,9 +143,15 @@ export default function DashboardPage() {
 
     const fetchStatus = async () => {
         try {
-            const response = await fetch("/api/scraper/status", {
-                headers: getAuthHeaders(),
-            });
+            const [scraperResult, manifestResult] = await Promise.allSettled([
+                fetch("/api/scraper/status", { headers: getAuthHeaders() }),
+                fetch("/api/manifests/status", { headers: getAuthHeaders() }),
+            ]);
+
+            if (scraperResult.status === "rejected") {
+                throw scraperResult.reason;
+            }
+            const response = scraperResult.value;
 
             if (response.status === 401) {
                 localStorage.removeItem("access_token");
@@ -136,10 +165,38 @@ export default function DashboardPage() {
 
             const data = await response.json();
             setStatus(data);
+            if (
+                manifestResult.status === "fulfilled"
+                && manifestResult.value.ok
+            ) {
+                setManifestStatus(await manifestResult.value.json());
+            } else {
+                setManifestStatus(null);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error loading status");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleManifestRebuild = async () => {
+        setRebuildingManifest(true);
+        try {
+            const response = await fetch("/api/manifests/rebuild", {
+                method: "POST",
+                headers: getAuthHeaders(),
+            });
+            const data = await response.json();
+            setManifestStatus(data);
+            if (!response.ok) {
+                throw new Error(data.last_error || "Manifest rebuild failed");
+            }
+            showToast("Manifest rebuilt", "success");
+        } catch (err) {
+            showToast(err instanceof Error ? err.message : "Manifest rebuild failed", "error");
+        } finally {
+            setRebuildingManifest(false);
         }
     };
 
@@ -333,6 +390,84 @@ export default function DashboardPage() {
                             ))}
                         </div>
                     )}
+                </div>
+            </div>
+
+            <div className={`${styles.card} ${styles.cardPad}`} style={{ marginTop: "1.5rem" }}>
+                <div className={styles.cardHeader}>
+                    <h3 className={styles.cardTitle}>
+                        <span className={styles.cardIcon}><BoxIcon size={17} /></span>
+                        Artifact manifest
+                    </h3>
+                    <span className={`${styles.badge} ${
+                        manifestStatus?.state === "healthy"
+                            ? styles.badgeSuccess
+                            : manifestStatus?.state === "disabled"
+                                ? styles.badgeNeutral
+                                : styles.badgeDanger
+                    }`}>
+                        {manifestStatus?.state || "unknown"}
+                    </span>
+                </div>
+                <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+                    <div>
+                        <p className={styles.helpText}>Artifacts</p>
+                        <strong>{manifestStatus?.statistics?.artifact_count ?? 0}</strong>
+                    </div>
+                    <div>
+                        <p className={styles.helpText}>Checksum coverage</p>
+                        <strong>{manifestStatus?.checksum_coverage_percent ?? 0}%</strong>
+                    </div>
+                    <div>
+                        <p className={styles.helpText}>Cache coverage</p>
+                        <strong>{manifestStatus?.cache_coverage_percent ?? 0}%</strong>
+                    </div>
+                    <div>
+                        <p className={styles.helpText}>Conflicts</p>
+                        <strong>{manifestStatus?.statistics?.conflict_count ?? 0}</strong>
+                    </div>
+                </div>
+                <div style={{ marginTop: "1rem", display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "end" }}>
+                    <div style={{ minWidth: 0 }}>
+                        <p className={styles.helpText}>
+                            Revision: <span className={styles.mono}>{manifestStatus?.revision || "not published"}</span>
+                        </p>
+                        <p className={styles.helpText}>
+                            Last success: {manifestStatus?.last_success
+                                ? new Date(manifestStatus.last_success).toLocaleString()
+                                : "Never"}
+                        </p>
+                        {manifestStatus?.last_error && (
+                            <p style={{ color: "var(--admin-danger)", fontSize: "0.75rem", margin: "0.25rem 0 0" }}>
+                                {manifestStatus.last_error}
+                            </p>
+                        )}
+                        {manifestStatus?.recent_events?.[0] && (
+                            <p className={styles.helpText}>
+                                Latest integrity event: {manifestStatus.recent_events[0].event}
+                                {manifestStatus.recent_events[0].filename
+                                    ? ` · ${manifestStatus.recent_events[0].filename}`
+                                    : ""}
+                            </p>
+                        )}
+                    </div>
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <a
+                            href="/manifests/artifacts.json"
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`${styles.btn} ${styles.btnSecondary} ${styles.btnSm}`}
+                        >
+                            Open manifest
+                        </a>
+                        <button
+                            onClick={handleManifestRebuild}
+                            disabled={rebuildingManifest}
+                            className={`${styles.btn} ${styles.btnPrimary} ${styles.btnSm}`}
+                        >
+                            {rebuildingManifest ? "Rebuilding…" : "Rebuild"}
+                        </button>
+                    </div>
                 </div>
             </div>
 

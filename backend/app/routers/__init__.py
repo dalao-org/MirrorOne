@@ -6,6 +6,7 @@ from .settings import router as settings_router
 from .resources import router as resources_router
 from .redirect import router as redirect_router
 from .scraper import router as scraper_router
+from .manifests import router as manifests_router
 
 __all__ = [
     "auth_router",
@@ -13,4 +14,5 @@ __all__ = [
     "resources_router",
     "redirect_router",
     "scraper_router",
+    "manifests_router",
 ]
