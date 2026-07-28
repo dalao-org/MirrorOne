@@ -17,6 +17,8 @@ class CacertScraper(BaseScraper):
             file_name="cacert.pem",
             url="https://curl.se/ca/cacert.pem",
             version="latest",
+            kind="certificate",
+            component="cacert",
         ))
         
         result.success = True

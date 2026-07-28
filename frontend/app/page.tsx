@@ -438,6 +438,20 @@ export default function Home() {
                         📦 resource.json
                     </a>
                     <a
+                        href="/manifests/artifacts.json"
+                        style={{
+                            padding: "0.5rem 1rem",
+                            background: colors.blueBg,
+                            border: `1px solid ${colors.blueBorder}`,
+                            borderRadius: "8px",
+                            color: colors.blueText,
+                            textDecoration: "none",
+                            fontSize: "0.875rem",
+                        }}
+                    >
+                        🧾 artifacts.json
+                    </a>
+                    <a
                         href="/_redirects"
                         style={{
                             padding: "0.5rem 1rem",
@@ -761,7 +775,7 @@ export default function Home() {
                     color: colors.textMuted,
                     fontSize: "0.75rem",
                 }}>
-                    Version {health?.version || "2.0.0"} • Powered by <a href="https://github.com/Masterain98" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>Masterain</a>
+                    Version {health?.version || "2.1.0"} • Powered by <a href="https://github.com/Masterain98" target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>Masterain</a>
                 </footer>
             </div>
         </main>

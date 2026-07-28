@@ -132,6 +132,15 @@ class MySQLScraper(BaseScraper):
                     version="",  # Will be set by caller
                     checksum=md5,
                     checksum_type="md5" if md5 else None,
+                    kind="binary",
+                    os="linux",
+                    arch="x86_64",
+                    libc=(
+                        re.search(r"(glibc\d+(?:\.\d+)?)", file_name).group(1)
+                        if re.search(r"(glibc\d+(?:\.\d+)?)", file_name)
+                        else None
+                    ),
+                    checksum_source_url=url,
                 )
         except Exception:
             # Intentionally return None - caller will skip this version

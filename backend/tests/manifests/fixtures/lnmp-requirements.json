@@ -1,0 +1,7 @@
+{
+  "required_filenames": [
+    "nginx-*.tar.gz",
+    "php-*.tar.gz",
+    "mysql-*-linux-*-x86_64.tar.*"
+  ]
+}

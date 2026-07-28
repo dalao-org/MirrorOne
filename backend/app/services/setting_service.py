@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.setting import Setting
+from app.config import get_settings
 
 
 # Default settings to initialize
+environment_settings = get_settings()
 DEFAULT_SETTINGS = [
     {
         "key": "mirror_type",
@@ -52,6 +54,44 @@ DEFAULT_SETTINGS = [
         "value": "true",
         "value_type": "bool",
         "description": "Enable automatic scheduled scraping",
+    },
+    {
+        "key": "manifest_enabled",
+        "value": "true" if environment_settings.MANIFEST_ENABLED else "false",
+        "value_type": "bool",
+        "description": "Publish the versioned artifacts manifest",
+    },
+    {
+        "key": "manifest_public_base_url",
+        "value": environment_settings.MANIFEST_PUBLIC_BASE_URL,
+        "value_type": "string",
+        "description": "Public base URL advertised by the artifacts manifest",
+    },
+    {
+        "key": "manifest_keep_history",
+        "value": str(environment_settings.MANIFEST_KEEP_HISTORY),
+        "value_type": "int",
+        "description": "Number of private manifest snapshots to retain",
+    },
+    {
+        "key": "manifest_include_cache_status",
+        "value": (
+            "true"
+            if environment_settings.MANIFEST_INCLUDE_CACHE_STATUS
+            else "false"
+        ),
+        "value_type": "bool",
+        "description": "Include local cache availability in the artifacts manifest",
+    },
+    {
+        "key": "manifest_rebuild_after_scrape",
+        "value": (
+            "true"
+            if environment_settings.MANIFEST_REBUILD_AFTER_SCRAPE
+            else "false"
+        ),
+        "value_type": "bool",
+        "description": "Rebuild the manifest after scraper data changes",
     },
     # MySQL settings
     {

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     
     # Application
     APP_NAME: str = "Oneinstack Mirror Generator"
+    APP_VERSION: str = "2.1.0"
     DEBUG: bool = False
     
     # Database
@@ -30,6 +31,17 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: list[str] = Field(default=["http://localhost:3000"])
+
+    # Artifact manifest
+    MANIFEST_ENABLED: bool = True
+    MANIFEST_OUTPUT_DIR: str = "/app/data/manifests"
+    MANIFEST_PUBLIC_BASE_URL: str = "http://localhost:3000"
+    MANIFEST_REBUILD_AFTER_SCRAPE: bool = True
+    MANIFEST_INCLUDE_CACHE_STATUS: bool = True
+    MANIFEST_KEEP_HISTORY: int = 20
+    MANIFEST_CHECKSUM_SIDECAR: bool = True
+    MANIFEST_GENERATOR_COMMIT: str = "unknown"
+    MANIFEST_INSTANCE_ID: str = "mirrorone"
     
     model_config = {
         "env_file": ".env",

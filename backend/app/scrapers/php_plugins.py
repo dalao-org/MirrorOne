@@ -42,7 +42,7 @@ class PhpPluginsScraper(BaseScraper):
                 await self._scrape_pecl_package(
                     package_name, file_prefix, meta_key, allow_unstable, blacklist, result
                 )
-            except Exception as e:
+            except Exception:
                 # Log but continue with other packages
                 pass
         
@@ -91,6 +91,8 @@ class PhpPluginsScraper(BaseScraper):
                     file_name=text,
                     url=download_url,
                     version=version,
+                    kind="extension",
+                    component=file_prefix.lower(),
                 ))
                 
                 if latest_version is None:

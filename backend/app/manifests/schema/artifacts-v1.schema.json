@@ -1,0 +1,480 @@
+{
+  "$id": "https://mirrorone.example/schema/artifacts-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/artifact"
+      },
+      "type": "array"
+    },
+    "checksum_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "checksum_optional": {
+          "const": true
+        },
+        "mirror_computed_digest_is_authoritative": {
+          "const": false
+        },
+        "missing_checksum_allowed": {
+          "const": true
+        },
+        "preferred_algorithms": {
+          "items": {
+            "enum": [
+              "sha512",
+              "sha384",
+              "sha256",
+              "sha1",
+              "md5"
+            ]
+          },
+          "type": "array"
+        },
+        "source": {
+          "const": "upstream"
+        }
+      },
+      "required": [
+        "source",
+        "checksum_optional",
+        "missing_checksum_allowed",
+        "mirror_computed_digest_is_authoritative",
+        "preferred_algorithms"
+      ],
+      "type": "object"
+    },
+    "conflicts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "reason",
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "generator": {
+      "additionalProperties": false,
+      "properties": {
+        "commit": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string"
+        },
+        "name": {
+          "const": "MirrorOne"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "commit",
+        "instance_id"
+      ],
+      "type": "object"
+    },
+    "manifest_revision": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "mirror": {
+      "additionalProperties": false,
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "current_mode": {
+          "enum": [
+            "redirect",
+            "cache"
+          ]
+        },
+        "download_path_template": {
+          "const": "/src/{filename}"
+        },
+        "force_redirect_parameter": {
+          "const": "force_redirect=true"
+        },
+        "legacy_path_template": {
+          "const": "/oneinstack/src/{filename}"
+        },
+        "supported_modes": {
+          "items": {
+            "enum": [
+              "redirect",
+              "cache"
+            ]
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "base_url",
+        "download_path_template",
+        "legacy_path_template",
+        "force_redirect_parameter",
+        "supported_modes",
+        "current_mode"
+      ],
+      "type": "object"
+    },
+    "schema_name": {
+      "const": "mirrorone-artifacts"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "statistics": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cached": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "conflict_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "not_cached": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "with_upstream_checksum": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "without_upstream_checksum": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_count",
+        "with_upstream_checksum",
+        "without_upstream_checksum",
+        "cached",
+        "not_cached",
+        "conflict_count"
+      ],
+      "type": "object"
+    },
+    "version_recommendations": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    }
+  },
+  "required": [
+    "$schema",
+    "schema_name",
+    "schema_version",
+    "manifest_revision",
+    "generated_at",
+    "generator",
+    "mirror",
+    "checksum_policy",
+    "version_recommendations",
+    "artifacts",
+    "conflicts",
+    "statistics"
+  ],
+  "title": "MirrorOne Artifact Manifest v1",
+  "type": "object",
+  "$defs": {
+    "artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "aliases": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "channel": {
+          "enum": [
+            "recommended",
+            "stable",
+            "mainline",
+            "supported",
+            "legacy",
+            "eol",
+            "archive",
+            "unknown"
+          ]
+        },
+        "checksum_metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "provenance": {
+              "enum": [
+                "upstream",
+                "none"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "strength": {
+              "enum": [
+                "strong",
+                "legacy",
+                "none"
+              ]
+            }
+          },
+          "required": [
+            "available",
+            "provenance",
+            "source_url",
+            "strength",
+            "reason"
+          ],
+          "type": "object"
+        },
+        "checksums": {
+          "additionalProperties": false,
+          "properties": {
+            "md5": {
+              "pattern": "^[0-9a-fA-F]{32}$",
+              "type": "string"
+            },
+            "sha1": {
+              "pattern": "^[0-9a-fA-F]{40}$",
+              "type": "string"
+            },
+            "sha256": {
+              "pattern": "^[0-9a-fA-F]{64}$",
+              "type": "string"
+            },
+            "sha384": {
+              "pattern": "^[0-9a-fA-F]{96}$",
+              "type": "string"
+            },
+            "sha512": {
+              "pattern": "^[0-9a-fA-F]{128}$",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "component": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "filename": {
+          "maxLength": 255,
+          "minLength": 1,
+          "not": {
+            "pattern": "(^|[\\\\/])\\.\\.($|[\\\\/])|[\\\\/\\u0000]"
+          },
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "binary",
+            "patch",
+            "extension",
+            "module",
+            "certificate",
+            "script",
+            "archive",
+            "jar",
+            "key",
+            "metadata"
+          ]
+        },
+        "mirror": {
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "cache_status": {
+              "enum": [
+                "cached",
+                "not_cached",
+                "quarantined"
+              ]
+            },
+            "cached_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "integrity_status": {
+              "enum": [
+                "verified_upstream_checksum",
+                "unverified_upstream_checksum_unavailable",
+                "checksum_mismatch",
+                "not_cached"
+              ]
+            },
+            "legacy_path": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "legacy_path",
+            "available",
+            "cache_status",
+            "cached_at",
+            "integrity_status"
+          ],
+          "type": "object"
+        },
+        "platform": {
+          "additionalProperties": false,
+          "properties": {
+            "arch": {
+              "type": "string"
+            },
+            "libc": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "os": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "os",
+            "arch",
+            "libc"
+          ],
+          "type": "object"
+        },
+        "size": {
+          "additionalProperties": false,
+          "properties": {
+            "bytes": {
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "source": {
+              "enum": [
+                "download",
+                "unknown"
+              ]
+            }
+          },
+          "required": [
+            "bytes",
+            "source"
+          ],
+          "type": "object"
+        },
+        "source": {
+          "additionalProperties": false,
+          "properties": {
+            "discovered_at": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "url": {
+              "pattern": "^https?://",
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "url",
+            "discovered_at"
+          ],
+          "type": "object"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "component",
+        "version",
+        "channel",
+        "kind",
+        "filename",
+        "aliases",
+        "platform",
+        "source",
+        "mirror",
+        "checksums",
+        "checksum_metadata",
+        "size",
+        "updated_at"
+      ],
+      "type": "object"
+    }
+  }
+}

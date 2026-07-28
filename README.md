@@ -23,6 +23,8 @@
 - **Web 管理后台** - 直观的 Dashboard，管理资源和设置
 - **定时自动抓取** - 基于 APScheduler 的后台任务，定期更新资源链接
 - **模块化爬虫架构** - 标准化的 Scraper 基类，轻松扩展新软件包
+- **标准制品清单** - 原子发布 `/manifests/artifacts.json`，包含上游 checksum、缓存状态、冲突和版本建议
+- **缓存完整性保护** - 有上游 checksum 时强制校验，不匹配文件进入 quarantine；缺少 checksum 的制品保持兼容
 - **Docker 一键部署** - 使用 Docker Compose 快速部署
 
 ### 兼容的脚本
@@ -161,6 +163,15 @@
 | `ADMIN_USERNAME` | 管理员用户名 | `admin` |
 | `ADMIN_PASSWORD` | 管理员密码 (⚠️ 生产环境必须修改) | - |
 | `CORS_ORIGINS` | 允许的跨域来源 | `["http://localhost:3000"]` |
+| `MANIFEST_ENABLED` | 启用制品清单 | `true` |
+| `MANIFEST_OUTPUT_DIR` | 清单和私有历史快照目录 | `/app/data/manifests` |
+| `MANIFEST_PUBLIC_BASE_URL` | 清单公布的镜像基础 URL | `http://localhost:3000` |
+| `MANIFEST_REBUILD_AFTER_SCRAPE` | 抓取完成后重建清单 | `true` |
+| `MANIFEST_INCLUDE_CACHE_STATUS` | 在清单中包含缓存状态 | `true` |
+| `MANIFEST_KEEP_HISTORY` | 保留的私有历史快照数 | `20` |
+| `MANIFEST_CHECKSUM_SIDECAR` | 发布 `artifacts.json.sha256` | `true` |
+| `MANIFEST_GENERATOR_COMMIT` | 写入 revision 的部署 commit | `unknown` |
+| `MANIFEST_INSTANCE_ID` | 镜像实例标识 | `mirrorone` |
 | `NEXT_PUBLIC_API_URL` | 前端访问后端的 URL | `http://backend:8000` |
 | `TUNNEL_TOKEN` | Cloudflare Tunnel Token（可选） | - |
 
@@ -252,6 +263,21 @@ pnpm dev
 mirror_link="https://your-mirror-domain.com"
 ```
 
+### 如何使用制品清单？
+
+机器可读接口和 Schema：
+
+```text
+GET /manifests/artifacts.json
+GET /manifests/artifacts.json.sha256
+GET /manifests/schema/artifacts-v1.schema.json
+```
+
+清单支持 `ETag`、`Last-Modified`、`If-None-Match` 和
+`If-Modified-Since`。`checksums` 仅表示上游发布的摘要；MirrorOne
+自行计算的观测摘要不会冒充上游信任依据。完整协议、升级与故障排查请参阅
+[Artifact Manifest 指南](docs/artifact-manifest.md)。
+
 ### 如何切换镜像模式？
 
 登录管理后台 → Settings → 修改 `mirror_mode` 设置：
@@ -292,4 +318,3 @@ mirror_link="https://your-mirror-domain.com"
 本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
 ---
-

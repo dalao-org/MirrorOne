@@ -7,6 +7,9 @@ from datetime import datetime, UTC
 from typing import ClassVar, Any
 import httpx
 
+from app.manifests.checksum import normalize_algorithm, validate_checksum
+from app.manifests.validator import validate_filename, validate_source_url
+
 
 @dataclass
 class Resource:
@@ -16,6 +19,63 @@ class Resource:
     version: str
     checksum: str | None = None
     checksum_type: str | None = None
+    checksums: dict[str, str] = field(default_factory=dict)
+    kind: str = "source"
+    channel: str | None = None
+    aliases: list[str] = field(default_factory=list)
+    os: str = "any"
+    arch: str = "any"
+    libc: str | None = None
+    checksum_source_url: str | None = None
+    checksum_unavailable_reason: str | None = None
+    component: str | None = None
+
+
+def normalize_resource(resource: Resource) -> tuple[Resource, list[str]]:
+    """Normalize a scraper resource without making checksum availability mandatory."""
+    warnings: list[str] = []
+    resource.file_name = validate_filename(resource.file_name)
+    resource.url = validate_source_url(resource.url)
+    resource.version = resource.version.strip()
+    resource.aliases = sorted({
+        validate_filename(alias)
+        for alias in resource.aliases
+        if alias and alias != resource.file_name
+    })
+
+    normalized_checksums: dict[str, str] = {}
+    candidates = dict(resource.checksums)
+    if resource.checksum and resource.checksum_type:
+        candidates[resource.checksum_type] = resource.checksum
+
+    for raw_algorithm, raw_digest in candidates.items():
+        algorithm = normalize_algorithm(raw_algorithm)
+        if algorithm is None or not validate_checksum(algorithm, raw_digest):
+            warnings.append(
+                f"{resource.file_name}: invalid upstream checksum format "
+                f"for {raw_algorithm}"
+            )
+            resource.checksum_unavailable_reason = "invalid_upstream_checksum_format"
+            continue
+        normalized_checksums[algorithm] = raw_digest.strip().lower()
+
+    resource.checksums = normalized_checksums
+    if normalized_checksums:
+        strongest = next(
+            algorithm
+            for algorithm in ("sha512", "sha384", "sha256", "sha1", "md5")
+            if algorithm in normalized_checksums
+        )
+        resource.checksum_type = strongest
+        resource.checksum = normalized_checksums[strongest]
+        resource.checksum_unavailable_reason = None
+    else:
+        resource.checksum = None
+        resource.checksum_type = None
+        resource.checksum_unavailable_reason = (
+            resource.checksum_unavailable_reason or "upstream_not_published"
+        )
+    return resource, warnings
 
 
 @dataclass
@@ -168,6 +228,19 @@ class BaseScraper(ABC):
         
         try:
             result = await self.scrape()
+            normalized_resources: list[Resource] = []
+            for resource in result.resources:
+                try:
+                    normalized, warnings = normalize_resource(resource)
+                    normalized_resources.append(normalized)
+                    for warning in warnings:
+                        await self.log(warning, "warning")
+                except ValueError as exc:
+                    await self.log(
+                        f"Dropping unsafe resource {resource.file_name!r}: {exc}",
+                        "warning",
+                    )
+            result.resources = normalized_resources
             result.success = True
             
             await broadcaster.broadcast(

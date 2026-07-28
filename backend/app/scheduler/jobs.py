@@ -47,17 +47,32 @@ async def update_redis_from_result(result: ScrapeResult, settings: dict[str, Any
     if not result.success and not result.resources:
         return
     
-    # Delete old rules from this source
-    await redis_client.delete_redirect_rules_by_source(result.scraper_name)
-    
-    # Add new rules
+    resources = []
     for resource in result.resources:
-        await redis_client.set_redirect_rule(
+        resources.append(dict(
             filename=resource.file_name,
             url=resource.url,
             version=resource.version,
             source=result.scraper_name,
-        )
+            checksum=resource.checksum,
+            checksum_type=resource.checksum_type,
+            checksums=resource.checksums,
+            kind=resource.kind,
+            platform={
+                "os": resource.os,
+                "arch": resource.arch,
+                "libc": resource.libc,
+            },
+            channel=resource.channel,
+            aliases=resource.aliases,
+            checksum_source_url=resource.checksum_source_url,
+            checksum_unavailable_reason=resource.checksum_unavailable_reason,
+            component=resource.component,
+        ))
+    await redis_client.replace_redirect_rules_for_source(
+        result.scraper_name,
+        resources,
+    )
     
     # Update version metas
     for meta in result.version_metas:
@@ -85,7 +100,14 @@ async def download_cache_for_result(result: ScrapeResult, settings: dict[str, An
     
     # Convert resources to dicts for parallel download
     resources = [
-        {"url": r.url, "file_name": r.file_name, "source": result.scraper_name}
+        {
+            "url": r.url,
+            "file_name": r.file_name,
+            "source": result.scraper_name,
+            "checksums": r.checksums,
+            "checksum": r.checksum,
+            "checksum_type": r.checksum_type,
+        }
         for r in result.resources
     ]
     
@@ -145,6 +167,12 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
     
     # Run all scrapers
     results = await registry.run_all(settings)
+    metadata_update_token = await redis_client.begin_manifest_metadata_update()
+    try:
+        for result in results:
+            await update_redis_from_result(result, settings)
+    finally:
+        await redis_client.end_manifest_metadata_update(metadata_update_token)
     
     # Process results
     success_count = 0
@@ -185,9 +213,6 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
                 scraper=result.scraper_name,
             )
         
-        # Update Redis
-        await update_redis_from_result(result, settings)
-        
         # Save log
         await save_scrape_log(result)
     
@@ -212,6 +237,12 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
             "✅ Cache download phase completed",
             level=LogLevel.SUCCESS,
         )
+
+    if settings.get("manifest_enabled", True) and settings.get(
+        "manifest_rebuild_after_scrape", True
+    ):
+        from app.manifests.service import rebuild_manifest
+        await rebuild_manifest(settings)
     
     return results
 
@@ -273,10 +304,21 @@ async def run_single_scraper_job(scraper_name: str, settings: dict[str, Any]) ->
             scraper=result.scraper_name,
         )
     
-    # Update Redis
-    await update_redis_from_result(result, settings)
+    metadata_update_token = await redis_client.begin_manifest_metadata_update()
+
+    try:
+        # Update Redis
+        await update_redis_from_result(result, settings)
+    finally:
+        await redis_client.end_manifest_metadata_update(metadata_update_token)
     
     # Save log
     await save_scrape_log(result)
+
+    if settings.get("manifest_enabled", True) and settings.get(
+        "manifest_rebuild_after_scrape", True
+    ):
+        from app.manifests.service import rebuild_manifest
+        await rebuild_manifest(settings)
     
     return result
