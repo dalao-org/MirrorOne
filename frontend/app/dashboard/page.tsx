@@ -143,10 +143,15 @@ export default function DashboardPage() {
 
     const fetchStatus = async () => {
         try {
-            const [response, manifestResponse] = await Promise.all([
+            const [scraperResult, manifestResult] = await Promise.allSettled([
                 fetch("/api/scraper/status", { headers: getAuthHeaders() }),
                 fetch("/api/manifests/status", { headers: getAuthHeaders() }),
             ]);
+
+            if (scraperResult.status === "rejected") {
+                throw scraperResult.reason;
+            }
+            const response = scraperResult.value;
 
             if (response.status === 401) {
                 localStorage.removeItem("access_token");
@@ -160,8 +165,13 @@ export default function DashboardPage() {
 
             const data = await response.json();
             setStatus(data);
-            if (manifestResponse.ok) {
-                setManifestStatus(await manifestResponse.json());
+            if (
+                manifestResult.status === "fulfilled"
+                && manifestResult.value.ok
+            ) {
+                setManifestStatus(await manifestResult.value.json());
+            } else {
+                setManifestStatus(null);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error loading status");

@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from app import redis_client
 
 
@@ -107,6 +106,35 @@ async def test_v1_to_v2_migration_is_idempotent(monkeypatch):
     assert migrated["checksums"] == {}
     assert migrated["kind"] == "source"
     assert migrated["platform"]["arch"] == "any"
+
+
+@pytest.mark.asyncio
+async def test_v1_migration_backfills_checksum_map_without_missing_reason(
+    monkeypatch,
+):
+    fake = FakeRedis()
+    fake.hashes[redis_client.REDIRECT_RULES_KEY] = {
+        "php.tar.gz": json.dumps({
+            "url": "https://example.com/php.tar.gz",
+            "version": "1",
+            "source": "php",
+            "checksum": "A" * 64,
+            "checksum_type": "SHA-256",
+        })
+    }
+
+    async def get_fake():
+        return fake
+
+    monkeypatch.setattr(redis_client, "get_redis", get_fake)
+    await redis_client.migrate_redis_schema()
+    migrated = json.loads(
+        fake.hashes[redis_client.REDIRECT_RULES_KEY]["php.tar.gz"]
+    )
+    assert migrated["checksums"] == {"sha256": "a" * 64}
+    assert migrated["checksum_type"] == "sha256"
+    assert migrated["checksum"] == "a" * 64
+    assert migrated["checksum_unavailable_reason"] is None
 
 
 @pytest.mark.asyncio

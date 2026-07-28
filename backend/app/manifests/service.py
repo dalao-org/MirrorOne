@@ -1,6 +1,7 @@
 """Manifest build orchestration shared by startup, scheduler, and admin API."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import UTC, datetime
@@ -12,7 +13,6 @@ from app.config import get_settings
 from .builder import ManifestBuilder
 from .metrics import set_metric
 from .publisher import ManifestPublisher
-
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,10 @@ async def rebuild_manifest(database_settings: dict | None = None) -> dict:
             await redis_client.set_manifest_status(status)
             return status
         manifest = await ManifestBuilder(values).build()
-        result = get_publisher(values).publish(manifest)
+        result = await asyncio.to_thread(
+            get_publisher(values).publish,
+            manifest,
+        )
         duration = time.perf_counter() - started
         stats = manifest.statistics.model_dump()
         status = {
@@ -116,7 +119,7 @@ async def rebuild_manifest(database_settings: dict | None = None) -> dict:
         return status
     except Exception as exc:
         duration = time.perf_counter() - started
-        current = get_publisher(values).read_current()
+        current = await asyncio.to_thread(get_publisher(values).read_current)
         status = {
             "state": "degraded",
             "last_attempt": started_at.isoformat(),

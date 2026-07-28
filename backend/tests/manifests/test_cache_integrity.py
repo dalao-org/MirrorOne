@@ -3,7 +3,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from app.manifests.validator import ValidatedNetworkTarget
 from app.services import cache_service
 from app.services.cache_service import download_file, download_resource
@@ -205,6 +204,59 @@ def test_cached_file_lookup_rejects_legacy_unsafe_source(tmp_path: Path):
         "../legacy",
         "file.tar.gz",
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_download_resource_rejects_unsafe_source(tmp_path: Path):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(500)
+        )
+    ) as client:
+        assert not await download_resource(
+            client,
+            "https://example.com/file.tar.gz",
+            "file.tar.gz",
+            "../unsafe",
+            tmp_path,
+        )
+
+
+@pytest.mark.asyncio
+async def test_unchanged_recent_cache_entry_skips_deep_hash(
+    monkeypatch,
+    tmp_path: Path,
+):
+    payload = b"payload"
+
+    async def allow_target(url):
+        return url
+
+    monkeypatch.setattr(cache_service, "validate_network_target", allow_target)
+    destination = tmp_path / "sample" / "file.tar.gz"
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=httpx.ByteStream(payload))
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        assert await download_file(
+            client,
+            "https://example.com/file.tar.gz",
+            destination,
+            checksums={"sha256": hashlib.sha256(payload).hexdigest()},
+        )
+
+        def unexpected_digest(*args, **kwargs):
+            raise AssertionError("unchanged recent file should not be re-hashed")
+
+        monkeypatch.setattr(cache_service, "digest_file", unexpected_digest)
+        assert await download_resource(
+            client,
+            "https://example.com/file.tar.gz",
+            destination.name,
+            "sample",
+            tmp_path,
+            checksums={"SHA-256": hashlib.sha256(payload).hexdigest()},
+        )
 
 
 @pytest.mark.asyncio

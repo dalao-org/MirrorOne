@@ -16,7 +16,6 @@ from .validator import (
     validate_manifest_schema,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +38,18 @@ def _write_fsynced(path: Path, content: bytes) -> None:
         stream.write(content)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def _fsync_directory(path: Path) -> None:
+    """Make a completed directory rename durable where the platform supports it."""
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if directory_flag is None:
+        return
+    descriptor = os.open(path, os.O_RDONLY | directory_flag)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 class ManifestPublisher:
@@ -178,6 +189,7 @@ class ManifestPublisher:
                     f"{digest}  artifacts.json\n".encode("ascii"),
                 )
             os.replace(revision_temp, revision_dir)
+            _fsync_directory(self.revisions_dir)
             _write_fsynced(
                 pointer_temp,
                 (
@@ -187,6 +199,7 @@ class ManifestPublisher:
             )
             os.replace(pointer_temp, self.pointer_path)
             pointer_switched = True
+            _fsync_directory(self.output_dir)
             try:
                 self._save_history(content, document["generated_at"])
             except Exception:

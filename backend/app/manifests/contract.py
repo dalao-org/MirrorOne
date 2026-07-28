@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fnmatch
+from collections import Counter
 
 from .checksum import validate_checksum
 from .validator import encoded_mirror_path
@@ -22,11 +23,15 @@ def validate_lnmp_contract(manifest: dict, fixture: dict) -> dict:
         for pattern in fixture.get("required_filenames", [])
         if not any(fnmatch.fnmatch(filename or "", pattern) for filename in available)
     ]
-    duplicate_ids = sorted({
-        artifact["id"]
-        for artifact in artifacts
-        if sum(item.get("id") == artifact.get("id") for item in artifacts) > 1
-    })
+    id_counts = Counter(artifact.get("id") for artifact in artifacts)
+    duplicate_ids = sorted(
+        (
+            artifact_id
+            for artifact_id, count in id_counts.items()
+            if count > 1
+        ),
+        key=lambda artifact_id: "" if artifact_id is None else str(artifact_id),
+    )
     invalid_checksums = []
     for artifact in artifacts:
         for algorithm, digest in artifact.get("checksums", {}).items():

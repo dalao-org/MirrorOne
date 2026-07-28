@@ -3,15 +3,15 @@ Scheduler jobs for periodic scraping.
 """
 import asyncio
 import logging
-from datetime import datetime, timedelta, UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app import redis_client
-from app.scrapers.registry import registry
-from app.scrapers.base import ScrapeResult
+from app.core.log_broadcaster import LogLevel, broadcaster
 from app.database import get_db_session
 from app.models.scrape_log import ScrapeLog
-from app.core.log_broadcaster import broadcaster, LogLevel
+from app.scrapers.base import ScrapeResult
+from app.scrapers.registry import registry
 
 logger = logging.getLogger(__name__)
 
@@ -177,16 +177,31 @@ async def _update_redis_with_manifest_lock(
                     return
 
     heartbeat_task = asyncio.create_task(refresh_lock_periodically())
+    partial = False
     try:
         for result in results:
             if lock_lost.is_set():
                 raise RuntimeError("artifact metadata update lock was lost")
             if not await redis_client.refresh_manifest_metadata_update(token):
                 raise RuntimeError("artifact metadata update lock was lost")
-            await update_redis_from_result(result, settings)
+            try:
+                await update_redis_from_result(result, settings)
+            except ValueError as exc:
+                partial = True
+                logger.warning(
+                    "Skipping invalid metadata from scraper %s: %s",
+                    result.scraper_name,
+                    exc,
+                )
+                await broadcaster.broadcast(
+                    f"⚠️ {result.scraper_name}: metadata was not published: {exc}",
+                    level=LogLevel.WARNING,
+                    scraper=result.scraper_name,
+                )
+                continue
             if lock_lost.is_set():
                 raise RuntimeError("artifact metadata update lock was lost")
-        return True
+        return not partial
     except RuntimeError as exc:
         logger.warning("Metadata update did not complete: %s", exc)
         await broadcaster.broadcast(

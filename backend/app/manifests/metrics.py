@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from threading import Lock
 
-
 _lock = Lock()
 _values: dict[str, float] = {
     "mirrorone_manifest_last_success_timestamp": 0,
@@ -35,5 +34,5 @@ def render_metrics() -> str:
     for name, value in sorted(values.items()):
         metric_type = "counter" if name.endswith("_total") else "gauge"
         lines.append(f"# TYPE {name} {metric_type}")
-        lines.append(f"{name} {value:g}")
+        lines.append(f"{name} {value!r}")
     return "\n".join(lines) + "\n"

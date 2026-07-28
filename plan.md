@@ -247,7 +247,7 @@ https://mirror.example.com/manifests/artifacts.json
 ```http
 Content-Type: application/json; charset=utf-8
 Cache-Control: public, max-age=300, stale-if-error=86400
-ETag: "manifest-revision"
+ETag: "<sha256-of-artifacts-json-bytes>"
 Last-Modified: ...
 X-MirrorOne-Schema-Version: 1
 X-MirrorOne-Manifest-Revision: ...

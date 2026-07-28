@@ -1,9 +1,8 @@
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from app.manifests.publisher import ManifestPublisher
+from pydantic import ValidationError
 
 
 def manifest_document() -> dict:
@@ -105,3 +104,17 @@ def test_public_pointer_always_resolves_a_matching_pair(tmp_path: Path):
     assert publisher.sidecar_path.read_bytes() == expected
     assert publisher.manifest_path.parent == publisher.sidecar_path.parent
     assert publisher.manifest_path.parent.parent == publisher.revisions_dir
+
+
+def test_publish_fsyncs_revision_and_pointer_directories(monkeypatch, tmp_path):
+    import app.manifests.publisher as publisher_module
+
+    calls = []
+    monkeypatch.setattr(
+        publisher_module,
+        "_fsync_directory",
+        lambda path: calls.append(path),
+    )
+    publisher = ManifestPublisher(tmp_path)
+    publisher.publish(manifest_document())
+    assert calls == [publisher.revisions_dir, publisher.output_dir]

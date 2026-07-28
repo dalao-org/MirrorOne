@@ -36,6 +36,9 @@ paths. It has no effect on manifest responses.
   cached and cannot overwrite a previous valid cache file.
 - When no upstream checksum exists, the file is cached with
   `integrity_status=unverified_upstream_checksum_unavailable`.
+- Cache sweeps reuse recent verification metadata only while the file size,
+  modification time, and upstream checksum set remain unchanged. Even unchanged
+  files receive a full digest verification at least once every 24 hours.
 
 The `.sha256` sidecar detects transfer or storage corruption. Because it is
 served by the same host as the manifest, it is not an independent trust root.

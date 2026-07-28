@@ -4,8 +4,9 @@ Redis client for redirect rules and version metadata storage.
 import json
 import logging
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
+
 import redis.asyncio as redis
 
 from app.config import get_settings
@@ -368,7 +369,7 @@ async def get_manifest_snapshot() -> tuple[
         before, raw_rules, versions, raw_conflicts, after = await pipeline.execute()
     finally:
         await pipeline.aclose()
-    if before or after or before != after:
+    if before or after:
         raise RuntimeError("artifact metadata update is in progress")
     rules = {
         filename: json.loads(value)
@@ -499,15 +500,44 @@ async def migrate_redis_schema() -> int:
         except (TypeError, json.JSONDecodeError):
             logger.warning("Skipping malformed Redis redirect rule: %s", filename)
             continue
-        rule.setdefault("checksum", None)
-        rule.setdefault("checksum_type", None)
-        rule.setdefault("checksums", {})
+        scalar_checksum = rule.get("checksum")
+        scalar_algorithm = normalize_algorithm(rule.get("checksum_type"))
+        raw_checksums = rule.get("checksums") or {}
+        had_checksum_input = bool(scalar_checksum or raw_checksums)
+        normalized_checksums: dict[str, str] = {}
+        for raw_algorithm, raw_digest in raw_checksums.items():
+            algorithm = normalize_algorithm(raw_algorithm)
+            if algorithm and validate_checksum(algorithm, raw_digest):
+                normalized_checksums[algorithm] = raw_digest.strip().lower()
+        if (
+            scalar_checksum
+            and scalar_algorithm
+            and validate_checksum(scalar_algorithm, scalar_checksum)
+        ):
+            normalized_checksums[scalar_algorithm] = (
+                scalar_checksum.strip().lower()
+            )
+        selected_checksum = choose_strongest(normalized_checksums)
+        rule["checksums"] = normalized_checksums
+        if selected_checksum:
+            rule["checksum_type"], rule["checksum"] = selected_checksum
+            rule["checksum_unavailable_reason"] = None
+        else:
+            rule.setdefault("checksum", None)
+            rule.setdefault("checksum_type", None)
+            rule.setdefault(
+                "checksum_unavailable_reason",
+                (
+                    "invalid_upstream_checksum_format"
+                    if had_checksum_input
+                    else "upstream_not_published"
+                ),
+            )
         rule.setdefault("kind", "source")
         rule.setdefault("platform", {"os": "any", "arch": "any", "libc": None})
         rule.setdefault("channel", "unknown")
         rule.setdefault("aliases", [])
         rule.setdefault("checksum_source_url", None)
-        rule.setdefault("checksum_unavailable_reason", "upstream_not_published")
         rule.setdefault("component", None)
         await r.hset(REDIRECT_RULES_KEY, filename, json.dumps(rule, sort_keys=True))
     await r.set(REDIS_SCHEMA_VERSION_KEY, REDIS_SCHEMA_VERSION)

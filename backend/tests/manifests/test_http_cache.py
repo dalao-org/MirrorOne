@@ -1,8 +1,11 @@
 from pathlib import Path
 
+from app.routers.manifests import (
+    _cached_file_headers,
+    _file_headers,
+    _not_modified,
+)
 from starlette.requests import Request
-
-from app.routers.manifests import _file_headers, _not_modified
 
 
 def request_with_headers(headers: dict[str, str]) -> Request:
@@ -45,3 +48,23 @@ def test_if_none_match_and_if_modified_since(tmp_path: Path):
         path,
         headers,
     )
+
+
+def test_file_headers_cache_payload_digest(monkeypatch, tmp_path: Path):
+    path = tmp_path / "artifacts.json"
+    path.write_text('{"manifest_revision":"revision"}\n', encoding="utf-8")
+    real_read_bytes = Path.read_bytes
+    reads = 0
+
+    def counted_read_bytes(candidate):
+        nonlocal reads
+        if candidate == path:
+            reads += 1
+        return real_read_bytes(candidate)
+
+    _cached_file_headers.cache_clear()
+    monkeypatch.setattr(Path, "read_bytes", counted_read_bytes)
+    first = _file_headers(path)
+    second = _file_headers(path)
+    assert first == second
+    assert reads == 1

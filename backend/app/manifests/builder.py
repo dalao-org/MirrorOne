@@ -1,9 +1,9 @@
 """Build a stable artifact manifest from a Redis snapshot."""
 from __future__ import annotations
 
-import re
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from urllib.parse import urlparse
 
@@ -24,8 +24,11 @@ from .models import (
     MirrorInfo,
     Platform,
 )
-from .validator import encoded_mirror_path, validate_manifest_dict
-
+from .validator import (
+    encoded_mirror_path,
+    validate_manifest_dict,
+    validate_source_url,
+)
 
 COMPOSITE_SOURCES = {"misc", "misc_github", "php_plugins", "php_patches"}
 ARCHIVE_SUFFIXES = (
@@ -124,6 +127,19 @@ class ManifestBuilder:
                 "aliases": [],
                 **raw_rule,
             }
+            try:
+                source_url = validate_source_url(rule.get("url"))
+            except (TypeError, ValueError) as exc:
+                generated_conflicts.append({
+                    "filename": filename,
+                    "reason": "invalid_redirect_rule",
+                    "candidates": [{
+                        "source": rule.get("source"),
+                        "version": rule.get("version"),
+                        "detail": str(exc),
+                    }],
+                })
+                continue
             platform = Platform.model_validate(rule["platform"] or {})
             component = rule.get("component") or _infer_component(
                 filename,
@@ -189,7 +205,7 @@ class ManifestBuilder:
                 )
 
             updated_at = rule.get("updated_at") or generated_at
-            source_url = rule["url"]
+            size_bytes = cache_info.get("size_bytes") if cache_info else None
             artifact = Artifact(
                 id=identifier,
                 component=component,
@@ -215,8 +231,8 @@ class ManifestBuilder:
                 checksums=checksums,
                 checksum_metadata=checksum_metadata,
                 size=ArtifactSize(
-                    bytes=cache_info.get("size_bytes") if cache_info else None,
-                    source="download" if cache_info else "unknown",
+                    bytes=size_bytes,
+                    source="download" if size_bytes is not None else "unknown",
                 ),
                 updated_at=updated_at,
             )

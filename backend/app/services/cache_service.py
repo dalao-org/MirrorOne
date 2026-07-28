@@ -1,9 +1,9 @@
 """
 Cache service for downloading and managing cached files.
 """
-import logging
 import asyncio
 import json
+import logging
 import os
 import uuid
 from datetime import UTC, datetime
@@ -22,8 +22,8 @@ from app.manifests.checksum import (
 )
 from app.manifests.metrics import increment_metric
 from app.manifests.validator import (
-    ensure_within_root,
     ValidatedNetworkTarget,
+    ensure_within_root,
     validate_filename,
     validate_network_target,
 )
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Default cache path (matches Docker volume mount)
 DEFAULT_CACHE_PATH = "/app/cache"
+CACHE_DEEP_VERIFY_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 class CacheIntegrityError(RuntimeError):
@@ -154,10 +155,16 @@ def _quarantine(path: Path, reason: str) -> Path:
 def _verify_existing_file(
     dest_path: Path,
     checksums: dict[str, str],
+    *,
+    force_deep_verify: bool = False,
+    deep_verify_interval_seconds: int = CACHE_DEEP_VERIFY_INTERVAL_SECONDS,
 ) -> tuple[bool, dict]:
     """Re-check an existing cache entry using upstream or prior observed metadata."""
     checksums = _canonical_checksums(checksums)
-    if not dest_path.is_file() or dest_path.stat().st_size <= 0:
+    if not dest_path.is_file():
+        return False, {"event": "cache_file_missing"}
+    stat = dest_path.stat()
+    if stat.st_size <= 0:
         if dest_path.exists():
             quarantined = _quarantine(dest_path, "empty_file")
             return False, {
@@ -167,25 +174,56 @@ def _verify_existing_file(
         return False, {"event": "cache_file_missing"}
 
     metadata = _read_cache_metadata(dest_path)
+    file_state = metadata.get("file_state") or {}
+    try:
+        verified_at = datetime.fromisoformat(
+            str(metadata["last_verified_at"]).replace("Z", "+00:00")
+        )
+        verification_age = (
+            datetime.now(UTC) - verified_at.astimezone(UTC)
+        ).total_seconds()
+    except (KeyError, TypeError, ValueError):
+        verification_age = deep_verify_interval_seconds
+    unchanged_since_verification = (
+        file_state.get("mtime_ns") == stat.st_mtime_ns
+        and file_state.get("size_bytes") == stat.st_size
+        and metadata.get("upstream_checksums") == checksums
+    )
+    if (
+        not force_deep_verify
+        and unchanged_since_verification
+        and 0 <= verification_age < deep_verify_interval_seconds
+        and metadata.get("integrity_status") in {
+            "verified_upstream_checksum",
+            "unverified_upstream_checksum_unavailable",
+        }
+    ):
+        return True, {"event": "cache_integrity_recently_verified"}
+
     selected = choose_strongest(checksums)
+    selected_actual: str | None = None
     if selected:
         algorithm, expected = selected
-        actual = digest_file(dest_path, algorithm)
-        if not digests_equal(actual, expected):
+        selected_actual = digest_file(dest_path, algorithm)
+        if not digests_equal(selected_actual, expected):
             quarantined = _quarantine(dest_path, "checksum_mismatch")
             increment_metric("mirrorone_cache_checksum_mismatch_total")
             return False, {
                 "event": "cache_checksum_mismatch",
                 "algorithm": algorithm,
                 "expected": expected,
-                "actual": actual,
+                "actual": selected_actual,
                 "quarantined_path": str(quarantined),
             }
         integrity_status = "verified_upstream_checksum"
     else:
         integrity_status = "unverified_upstream_checksum_unavailable"
 
-    observed_sha256 = digest_file(dest_path, "sha256")
+    observed_sha256 = (
+        selected_actual
+        if selected and selected[0] == "sha256"
+        else digest_file(dest_path, "sha256")
+    )
     previous_observed = metadata.get("observed_digests", {}).get("sha256")
     if (
         not selected
@@ -201,13 +239,18 @@ def _verify_existing_file(
             "quarantined_path": str(quarantined),
         }
 
+    verified_stat = dest_path.stat()
     _write_cache_metadata(dest_path, {
         "cached_at": metadata.get("cached_at")
-        or datetime.fromtimestamp(dest_path.stat().st_mtime, UTC).isoformat(),
+        or datetime.fromtimestamp(verified_stat.st_mtime, UTC).isoformat(),
         "integrity_status": integrity_status,
         "observed_digests": {"sha256": observed_sha256},
         "upstream_checksums": checksums,
         "last_verified_at": datetime.now(UTC).isoformat(),
+        "file_state": {
+            "mtime_ns": verified_stat.st_mtime_ns,
+            "size_bytes": verified_stat.st_size,
+        },
     })
     return True, {"event": "cache_integrity_verified"}
 
@@ -398,6 +441,7 @@ async def download_file(
             )
             await asyncio.to_thread(os.replace, temp_path, dest_path)
             cached_at = datetime.now(UTC).isoformat()
+            cached_stat = await asyncio.to_thread(dest_path.stat)
             await asyncio.to_thread(
                 _write_cache_metadata,
                 dest_path,
@@ -406,6 +450,11 @@ async def download_file(
                     "integrity_status": integrity_status,
                     "observed_digests": {"sha256": observed_sha256},
                     "upstream_checksums": checksums,
+                    "last_verified_at": cached_at,
+                    "file_state": {
+                        "mtime_ns": cached_stat.st_mtime_ns,
+                        "size_bytes": cached_stat.st_size,
+                    },
                 },
             )
             logger.info(f"Downloaded: {dest_path.name} ({received} bytes)")
@@ -448,7 +497,11 @@ async def download_resource(
     Returns:
         True if file exists or download succeeded
     """
-    dest_path = _cache_file_path(cache_path, source, filename)
+    try:
+        dest_path = _cache_file_path(cache_path, source, filename)
+    except ValueError as exc:
+        logger.error("Rejected unsafe cache resource: %s", exc)
+        return False
     checksums = _canonical_checksums(checksums)
     
     # Skip if already exists
@@ -571,7 +624,7 @@ async def download_resources_parallel(
     total = len(resources)
     
     # Import broadcaster
-    from app.core.log_broadcaster import broadcaster, LogLevel
+    from app.core.log_broadcaster import LogLevel, broadcaster
     
     async def download_one(resource: dict, client: httpx.AsyncClient):
         async with semaphore:

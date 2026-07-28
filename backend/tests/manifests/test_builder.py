@@ -1,5 +1,4 @@
 import pytest
-
 from app.manifests.builder import ManifestBuilder
 
 
@@ -76,3 +75,40 @@ async def test_conflicted_filename_is_reported_and_not_published(monkeypatch, tm
     )
     assert manifest.artifacts == []
     assert manifest.conflicts[0].filename == filename
+
+
+@pytest.mark.asyncio
+async def test_malformed_rule_is_reported_without_aborting_other_artifacts(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        "app.manifests.builder.cache_service.get_cache_info",
+        lambda *args: {"available": False, "size_bytes": None},
+    )
+    manifest = await ManifestBuilder({
+        "cache_path": str(tmp_path),
+        "manifest_generator_commit": "abcdef0",
+    }).build(
+        rules={
+            "broken.tar.gz": {
+                "version": "0",
+                "source": "broken",
+            },
+            "valid.tar.gz": {
+                "url": "https://example.com/valid.tar.gz",
+                "version": "1",
+                "source": "valid",
+            },
+        },
+        versions={"valid_ver": "1"},
+        conflicts=[],
+    )
+
+    assert [artifact.filename for artifact in manifest.artifacts] == [
+        "valid.tar.gz"
+    ]
+    assert manifest.artifacts[0].size.bytes is None
+    assert manifest.artifacts[0].size.source == "unknown"
+    assert manifest.conflicts[0].filename == "broken.tar.gz"
+    assert manifest.conflicts[0].reason == "invalid_redirect_rule"

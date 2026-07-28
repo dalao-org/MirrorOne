@@ -1,9 +1,11 @@
 """Public and authenticated artifact manifest endpoints."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from email.utils import formatdate, parsedate_to_datetime
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -16,7 +18,6 @@ from app.manifests.metrics import render_metrics
 from app.manifests.service import get_publisher, rebuild_manifest
 from app.services import setting_service
 
-
 router = APIRouter(tags=["Manifests"])
 SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent
@@ -26,19 +27,35 @@ SCHEMA_PATH = (
 )
 
 
-def _file_headers(path: Path, schema_version: bool = False) -> dict[str, str]:
-    stat = path.stat()
+@lru_cache(maxsize=256)
+def _cached_file_headers(
+    path_value: str,
+    modified_ns: int,
+    size: int,
+    schema_version: bool,
+) -> dict[str, str]:
+    path = Path(path_value)
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     headers = {
         "Cache-Control": "public, max-age=300, stale-if-error=86400",
         "ETag": f'"{digest}"',
-        "Last-Modified": formatdate(stat.st_mtime, usegmt=True),
+        "Last-Modified": formatdate(modified_ns / 1_000_000_000, usegmt=True),
     }
     if schema_version:
         document = json.loads(path.read_text(encoding="utf-8"))
         headers["X-MirrorOne-Schema-Version"] = "1"
         headers["X-MirrorOne-Manifest-Revision"] = document["manifest_revision"]
     return headers
+
+
+def _file_headers(path: Path, schema_version: bool = False) -> dict[str, str]:
+    stat = path.stat()
+    return dict(_cached_file_headers(
+        str(path),
+        stat.st_mtime_ns,
+        stat.st_size,
+        schema_version,
+    ))
 
 
 def _not_modified(request: Request, path: Path, headers: dict[str, str]) -> bool:
@@ -50,25 +67,32 @@ def _not_modified(request: Request, path: Path, headers: dict[str, str]) -> bool
     if if_modified_since:
         try:
             requested_time = parsedate_to_datetime(if_modified_since).timestamp()
-            return int(path.stat().st_mtime) <= int(requested_time)
-        except (TypeError, ValueError, OverflowError):
+            resource_time = parsedate_to_datetime(
+                headers["Last-Modified"]
+            ).timestamp()
+            return int(resource_time) <= int(requested_time)
+        except (KeyError, TypeError, ValueError, OverflowError):
             pass
     return False
 
 
-def _serve_file(
+async def _serve_file(
     request: Request,
     path: Path,
     media_type: str,
     *,
     schema_version: bool = False,
 ) -> Response:
-    if not path.is_file():
+    if not await asyncio.to_thread(path.is_file):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="No valid manifest snapshot is available yet",
         )
-    headers = _file_headers(path, schema_version=schema_version)
+    headers = await asyncio.to_thread(
+        _file_headers,
+        path,
+        schema_version,
+    )
     if _not_modified(request, path, headers):
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     return FileResponse(path, media_type=media_type, headers=headers)
@@ -77,7 +101,7 @@ def _serve_file(
 @router.get("/manifests/artifacts.json")
 async def get_artifacts_manifest(request: Request):
     publisher = get_publisher()
-    return _serve_file(
+    return await _serve_file(
         request,
         publisher.manifest_path,
         "application/json; charset=utf-8",
@@ -93,12 +117,16 @@ async def get_artifacts_manifest_checksum(request: Request):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Manifest checksum sidecar is disabled",
         )
-    return _serve_file(request, publisher.sidecar_path, "text/plain; charset=utf-8")
+    return await _serve_file(
+        request,
+        publisher.sidecar_path,
+        "text/plain; charset=utf-8",
+    )
 
 
 @router.get("/manifests/schema/artifacts-v1.schema.json")
 async def get_artifacts_schema(request: Request):
-    return _serve_file(request, SCHEMA_PATH, "application/schema+json")
+    return await _serve_file(request, SCHEMA_PATH, "application/schema+json")
 
 
 @router.get("/api/manifests/status")

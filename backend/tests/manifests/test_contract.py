@@ -3,7 +3,6 @@ from pathlib import Path
 
 from app.manifests.contract import validate_lnmp_contract
 
-
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "lnmp-requirements.json"
 
 
@@ -59,3 +58,24 @@ def test_contract_reports_malformed_filename_instead_of_raising():
     )
     assert report["compatible"] is False
     assert report["invalid_download_paths"] == [None]
+
+
+def test_contract_counts_duplicate_missing_ids_without_raising():
+    artifacts = [
+        {
+            "filename": f"sample-{index}.tar.gz",
+            "aliases": [],
+            "mirror": {"path": f"/src/sample-{index}.tar.gz"},
+            "checksums": {},
+        }
+        for index in range(2)
+    ]
+    report = validate_lnmp_contract(
+        {
+            "mirror": {"force_redirect_parameter": "force_redirect=true"},
+            "artifacts": artifacts,
+        },
+        {"required_filenames": []},
+    )
+    assert report["compatible"] is False
+    assert report["duplicate_artifact_ids"] == [None]

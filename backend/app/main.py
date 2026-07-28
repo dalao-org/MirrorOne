@@ -3,22 +3,23 @@ FastAPI application entry point.
 """
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import init_db, close_db, get_db_session
-from app.redis_client import get_redis, close_redis, migrate_redis_schema
-from app.services import auth_service, setting_service
-from app.scheduler import start_scheduler, stop_scheduler
+from app.database import close_db, get_db_session, init_db
+from app.redis_client import close_redis, get_redis, migrate_redis_schema
 from app.routers import (
     auth_router,
-    settings_router,
-    resources_router,
-    redirect_router,
-    scraper_router,
     manifests_router,
+    redirect_router,
+    resources_router,
+    scraper_router,
+    settings_router,
 )
+from app.scheduler import start_scheduler, stop_scheduler
+from app.services import auth_service, setting_service
 
 # Configure logging
 logging.basicConfig(
@@ -123,6 +124,15 @@ app.include_router(redirect_router)
 app.include_router(manifests_router)
 
 
+def _public_manifest_health(manifest_status: dict) -> dict:
+    """Project authenticated Manifest status onto the public health contract."""
+    return {
+        "state": manifest_status.get("state", "unknown"),
+        "revision": manifest_status.get("revision"),
+        "last_success": manifest_status.get("last_success"),
+    }
+
+
 @app.get("/health")
 async def health_check():
     """
@@ -130,10 +140,11 @@ async def health_check():
     
     Includes scraper status information.
     """
+    from sqlalchemy import desc, select
+
     from app import redis_client
     from app.database import get_db_session
     from app.models.scrape_log import ScrapeLog
-    from sqlalchemy import select, desc
     
     # Get scheduler times from Redis
     scheduler_times = await redis_client.get_scheduler_times()
@@ -152,8 +163,7 @@ async def health_check():
             if log and log.finished_at:
                 last_success = log.finished_at.isoformat()
     except Exception:
-        # Intentionally ignore - health check should return even if DB query fails
-        pass
+        logger.debug("Health check could not query the latest scrape", exc_info=True)
     
     manifest_status = {}
     try:
@@ -172,8 +182,7 @@ async def health_check():
             settings_dict = await setting_service.get_all_settings(db)
             mirror_type = settings_dict.get("mirror_type", "redirect")
     except Exception:
-        # Intentionally ignore - use default value if settings query fails
-        pass
+        logger.debug("Health check is using the default mirror mode", exc_info=True)
     
     return {
         "status": (
@@ -186,7 +195,7 @@ async def health_check():
         "last_scrape": scheduler_times.get("last_run"),
         "last_success": last_success,
         "next_scrape": scheduler_times.get("next_run"),
-        "manifest": manifest_status,
+        "manifest": _public_manifest_health(manifest_status),
     }
 
 
