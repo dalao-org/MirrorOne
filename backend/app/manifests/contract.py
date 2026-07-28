@@ -35,12 +35,16 @@ def validate_lnmp_contract(manifest: dict, fixture: dict) -> dict:
                     "filename": artifact.get("filename"),
                     "algorithm": algorithm,
                 })
-    invalid_paths = [
-        artifact.get("filename")
-        for artifact in artifacts
-        if artifact.get("mirror", {}).get("path")
-        != encoded_mirror_path(artifact.get("filename"))
-    ]
+    invalid_paths = []
+    for artifact in artifacts:
+        filename = artifact.get("filename")
+        try:
+            expected_path = encoded_mirror_path(filename)
+        except (TypeError, ValueError):
+            invalid_paths.append(filename)
+            continue
+        if artifact.get("mirror", {}).get("path") != expected_path:
+            invalid_paths.append(filename)
     force_redirect_parameter = manifest.get("mirror", {}).get(
         "force_redirect_parameter"
     )

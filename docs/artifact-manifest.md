@@ -42,10 +42,12 @@ served by the same host as the manifest, it is not an independent trust root.
 
 ## Snapshot and HTTP behavior
 
-The builder reads one Redis snapshot, applies stable sorting, validates all
-artifacts and conflicts, and writes a temporary file. The publisher flushes and
-fsyncs the candidate before `os.replace`. A failed build or replacement keeps
-the last-known-good public pair.
+The builder reads one Redis snapshot, applies stable sorting, and validates all
+artifacts and conflicts. The publisher writes and fsyncs an immutable revision
+directory containing both `artifacts.json` and its checksum sidecar, then
+atomically replaces `current.json`. Readers therefore see either the complete
+previous pair or the complete new pair. A failed build or pointer replacement
+keeps the last-known-good public pair.
 
 Successful responses include:
 

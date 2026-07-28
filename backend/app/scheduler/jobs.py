@@ -1,6 +1,7 @@
 """
 Scheduler jobs for periodic scraping.
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta, UTC
 from typing import Any
@@ -134,6 +135,71 @@ async def download_cache_for_result(result: ScrapeResult, settings: dict[str, An
     )
 
 
+async def _update_redis_with_manifest_lock(
+    results: list[ScrapeResult],
+    settings: dict[str, Any],
+) -> bool:
+    """Apply scraper metadata only when this job owns the snapshot lock."""
+    try:
+        token = await redis_client.begin_manifest_metadata_update()
+    except RuntimeError as exc:
+        logger.warning("Skipping metadata update and manifest rebuild: %s", exc)
+        await broadcaster.broadcast(
+            "⚠️ Another metadata update is active; "
+            "skipping Redis publication and Manifest rebuild",
+            level=LogLevel.WARNING,
+        )
+        return False
+
+    stop_heartbeat = asyncio.Event()
+    lock_lost = asyncio.Event()
+
+    async def refresh_lock_periodically() -> None:
+        interval = max(
+            1,
+            redis_client.MANIFEST_METADATA_UPDATE_TTL_SECONDS // 3,
+        )
+        while not stop_heartbeat.is_set():
+            try:
+                await asyncio.wait_for(stop_heartbeat.wait(), timeout=interval)
+                return
+            except TimeoutError:
+                try:
+                    refreshed = (
+                        await redis_client.refresh_manifest_metadata_update(token)
+                    )
+                except Exception:
+                    logger.exception("Unable to refresh artifact metadata lock")
+                    lock_lost.set()
+                    return
+                if not refreshed:
+                    lock_lost.set()
+                    return
+
+    heartbeat_task = asyncio.create_task(refresh_lock_periodically())
+    try:
+        for result in results:
+            if lock_lost.is_set():
+                raise RuntimeError("artifact metadata update lock was lost")
+            if not await redis_client.refresh_manifest_metadata_update(token):
+                raise RuntimeError("artifact metadata update lock was lost")
+            await update_redis_from_result(result, settings)
+            if lock_lost.is_set():
+                raise RuntimeError("artifact metadata update lock was lost")
+        return True
+    except RuntimeError as exc:
+        logger.warning("Metadata update did not complete: %s", exc)
+        await broadcaster.broadcast(
+            f"⚠️ Metadata update did not complete: {exc}",
+            level=LogLevel.WARNING,
+        )
+        return False
+    finally:
+        stop_heartbeat.set()
+        await heartbeat_task
+        await redis_client.end_manifest_metadata_update(token)
+
+
 async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
     """
     Run all scrapers and update Redis.
@@ -167,12 +233,7 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
     
     # Run all scrapers
     results = await registry.run_all(settings)
-    metadata_update_token = await redis_client.begin_manifest_metadata_update()
-    try:
-        for result in results:
-            await update_redis_from_result(result, settings)
-    finally:
-        await redis_client.end_manifest_metadata_update(metadata_update_token)
+    metadata_updated = await _update_redis_with_manifest_lock(results, settings)
     
     # Process results
     success_count = 0
@@ -238,7 +299,7 @@ async def run_scrape_job(settings: dict[str, Any]) -> list[ScrapeResult]:
             level=LogLevel.SUCCESS,
         )
 
-    if settings.get("manifest_enabled", True) and settings.get(
+    if metadata_updated and settings.get("manifest_enabled", True) and settings.get(
         "manifest_rebuild_after_scrape", True
     ):
         from app.manifests.service import rebuild_manifest
@@ -304,18 +365,12 @@ async def run_single_scraper_job(scraper_name: str, settings: dict[str, Any]) ->
             scraper=result.scraper_name,
         )
     
-    metadata_update_token = await redis_client.begin_manifest_metadata_update()
-
-    try:
-        # Update Redis
-        await update_redis_from_result(result, settings)
-    finally:
-        await redis_client.end_manifest_metadata_update(metadata_update_token)
+    metadata_updated = await _update_redis_with_manifest_lock([result], settings)
     
     # Save log
     await save_scrape_log(result)
 
-    if settings.get("manifest_enabled", True) and settings.get(
+    if metadata_updated and settings.get("manifest_enabled", True) and settings.get(
         "manifest_rebuild_after_scrape", True
     ):
         from app.manifests.service import rebuild_manifest

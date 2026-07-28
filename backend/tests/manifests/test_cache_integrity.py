@@ -4,6 +4,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.manifests.validator import ValidatedNetworkTarget
+from app.services import cache_service
 from app.services.cache_service import download_file, download_resource
 
 
@@ -152,3 +154,83 @@ async def test_every_redirect_target_is_validated_before_request(
         "http://127.0.0.1/file",
     ]
     assert not destination.exists()
+
+
+@pytest.mark.asyncio
+async def test_download_connects_to_the_validated_address_with_original_host(
+    monkeypatch,
+    tmp_path: Path,
+):
+    async def pin_target(url):
+        return ValidatedNetworkTarget(url, "example.com", ("203.0.113.10",))
+
+    monkeypatch.setattr(
+        "app.services.cache_service.validate_network_target",
+        pin_target,
+    )
+
+    def handler(request):
+        assert request.url.host == "203.0.113.10"
+        assert request.headers["host"] == "example.com"
+        assert request.extensions["sni_hostname"] == "example.com"
+        return httpx.Response(200, stream=httpx.ByteStream(b"payload"))
+
+    destination = tmp_path / "sample" / "file.tar.gz"
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        assert await download_file(
+            client,
+            "https://example.com/file.tar.gz",
+            destination,
+        )
+
+
+def test_find_cached_file_skips_path_that_resolves_outside_root(
+    monkeypatch,
+    tmp_path: Path,
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "file.tar.gz").write_bytes(b"payload")
+
+    def reject_path(path, root):
+        raise ValueError("path escapes configured root")
+
+    monkeypatch.setattr(cache_service, "ensure_within_root", reject_path)
+    assert cache_service.find_cached_file(tmp_path, "file.tar.gz") is None
+
+
+def test_cached_file_lookup_rejects_legacy_unsafe_source(tmp_path: Path):
+    assert cache_service.get_cached_file_path(
+        tmp_path,
+        "../legacy",
+        "file.tar.gz",
+    ) is None
+
+
+@pytest.mark.asyncio
+async def test_parallel_download_normalizes_checksum_algorithm_alias(
+    monkeypatch,
+    tmp_path: Path,
+):
+    payload = b"payload"
+    captured = {}
+
+    async def capture_download(client, url, dest_path, checksums=None, **kwargs):
+        captured.update(checksums or {})
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(payload)
+        return True
+
+    monkeypatch.setattr(cache_service, "download_file", capture_download)
+    stats = await cache_service.download_resources_parallel(
+        resources=[{
+            "url": "https://example.com/file.tar.gz",
+            "file_name": "file.tar.gz",
+            "source": "sample",
+            "checksum": hashlib.sha256(payload).hexdigest(),
+            "checksum_type": "SHA-256SUM",
+        }],
+        cache_path=tmp_path,
+    )
+    assert stats == {"downloaded": 1, "skipped": 0, "failed": 0}
+    assert captured == {"sha256": hashlib.sha256(payload).hexdigest()}

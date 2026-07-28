@@ -41,3 +41,21 @@ def test_contract_accepts_exact_download_protocol():
     }, fixture)
     assert report["compatible"] is True
     assert report["force_redirect_valid"] is True
+
+
+def test_contract_reports_malformed_filename_instead_of_raising():
+    report = validate_lnmp_contract(
+        {
+            "mirror": {"force_redirect_parameter": "force_redirect=true"},
+            "artifacts": [{
+                "id": "malformed",
+                "filename": None,
+                "aliases": [],
+                "mirror": {"path": "/src/missing"},
+                "checksums": {},
+            }],
+        },
+        {"required_filenames": []},
+    )
+    assert report["compatible"] is False
+    assert report["invalid_download_paths"] == [None]

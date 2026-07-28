@@ -40,7 +40,7 @@ async def redirect_file(filename: str, force_redirect: bool = False):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
-        )
+        ) from None
     settings = await get_mirror_settings()
     mirror_type = settings.get("mirror_type", "redirect")
     

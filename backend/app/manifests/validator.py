@@ -6,6 +6,7 @@ import asyncio
 import re
 import socket
 import json
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlparse
@@ -29,8 +30,19 @@ LEGACY_HTTP_HOSTS = {"memcached.org", "www.memcached.org"}
 SCHEMA_PATH = Path(__file__).parent / "schema" / "artifacts-v1.schema.json"
 
 
+@dataclass(frozen=True)
+class ValidatedNetworkTarget:
+    """A validated URL together with the public addresses approved for connection."""
+
+    url: str
+    hostname: str
+    addresses: tuple[str, ...]
+
+
 def validate_filename(filename: str) -> str:
     """Validate that a filename is a safe, exact basename."""
+    if not isinstance(filename, str):
+        raise ValueError("filename must be a string")
     value = filename.strip()
     if (
         not value
@@ -46,6 +58,8 @@ def validate_filename(filename: str) -> str:
 
 def validate_source_url(url: str, *, allow_legacy_http: bool = True) -> str:
     """Reject unsupported schemes and direct local/private network targets."""
+    if not isinstance(url, str):
+        raise ValueError("source URL must be a string")
     parsed = urlparse(url.strip())
     allowed_schemes = {"https"}
     if allow_legacy_http:
@@ -68,14 +82,14 @@ def validate_source_url(url: str, *, allow_legacy_http: bool = True) -> str:
     return url.strip()
 
 
-async def validate_network_target(url: str) -> str:
-    """Resolve a source host and reject DNS results in non-public address space."""
+async def validate_network_target(url: str) -> ValidatedNetworkTarget:
+    """Resolve and return the public addresses that the caller must connect to."""
     value = validate_source_url(url)
     parsed = urlparse(value)
     hostname = parsed.hostname or ""
     try:
-        ipaddress.ip_address(hostname)
-        return value
+        address = ipaddress.ip_address(hostname)
+        return ValidatedNetworkTarget(value, hostname, (str(address),))
     except ValueError:
         pass
     loop = asyncio.get_running_loop()
@@ -86,11 +100,15 @@ async def validate_network_target(url: str) -> str:
     )
     if not addresses:
         raise ValueError("source URL hostname did not resolve")
-    for address in addresses:
-        resolved = ipaddress.ip_address(address[4][0])
+    approved: list[str] = []
+    for address_info in addresses:
+        resolved = ipaddress.ip_address(address_info[4][0])
         if not resolved.is_global:
             raise ValueError("source URL resolves to private or reserved address space")
-    return value
+        value_text = str(resolved)
+        if value_text not in approved:
+            approved.append(value_text)
+    return ValidatedNetworkTarget(value, hostname, tuple(approved))
 
 
 def encoded_mirror_path(filename: str, prefix: str = "/src") -> str:

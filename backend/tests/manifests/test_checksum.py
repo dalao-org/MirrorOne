@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -51,12 +52,49 @@ def test_resource_normalization_keeps_artifact_when_checksum_is_invalid():
     assert warnings
 
 
+def test_resource_normalization_drops_whitespace_self_alias():
+    resource, _ = normalize_resource(Resource(
+        file_name=" sample.tar.gz ",
+        url="https://example.com/sample.tar.gz",
+        version="1",
+        aliases=["sample.tar.gz", " sample.tar.gz "],
+    ))
+    assert resource.file_name == "sample.tar.gz"
+    assert resource.aliases == []
+
+
 def test_choose_strongest_and_digest(tmp_path: Path):
     path = tmp_path / "payload"
     path.write_bytes(b"mirrorone")
     sha256 = digest_file(path, "sha256")
-    selected = choose_strongest({"md5": "a" * 32, "sha256": sha256})
+    selected = choose_strongest({
+        "md5": "a" * 32,
+        "sha256": f"  {sha256.upper()}  ",
+    })
     assert selected == ("sha256", sha256)
+
+
+def test_digest_file_marks_legacy_algorithms_as_non_security(
+    monkeypatch,
+    tmp_path: Path,
+):
+    path = tmp_path / "payload"
+    path.write_bytes(b"mirrorone")
+    real_new = hashlib.new
+    calls = []
+
+    def fips_aware_new(name, *, usedforsecurity=True):
+        calls.append((name, usedforsecurity))
+        if name in {"md5", "sha1"} and usedforsecurity:
+            raise ValueError("algorithm blocked by FIPS policy")
+        return real_new(name, usedforsecurity=usedforsecurity)
+
+    monkeypatch.setattr("app.manifests.checksum.hashlib.new", fips_aware_new)
+    assert digest_file(path, "md5") == hashlib.md5(
+        b"mirrorone",
+        usedforsecurity=False,
+    ).hexdigest()
+    assert calls == [("md5", False)]
 
 
 def test_filename_and_source_url_security_policy():

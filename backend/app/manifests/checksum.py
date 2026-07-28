@@ -54,7 +54,7 @@ def choose_strongest(checksums: dict[str, str]) -> tuple[str, str] | None:
     for algorithm in PREFERRED_ALGORITHMS:
         digest = checksums.get(algorithm)
         if digest and validate_checksum(algorithm, digest):
-            return algorithm, digest.lower()
+            return algorithm, digest.strip().lower()
     return None
 
 
@@ -63,7 +63,7 @@ def digest_file(path: Path, algorithm: str) -> str:
     normalized = normalize_algorithm(algorithm)
     if normalized is None:
         raise ValueError(f"Unsupported checksum algorithm: {algorithm}")
-    digest = hashlib.new(normalized)
+    digest = hashlib.new(normalized, usedforsecurity=False)
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)

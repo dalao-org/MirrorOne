@@ -878,7 +878,7 @@ if resource.checksums:
 
 ```text
 cache_status = cached
-integrity_status = upstream_checksum_unavailable
+integrity_status = unverified_upstream_checksum_unavailable
 ```
 
 不能把它描述为：
@@ -975,20 +975,25 @@ filename
 输出路径：
 
 ```text
-/app/data/manifests/artifacts.json
-/app/data/manifests/artifacts.json.sha256
+/app/data/manifests/current.json
+/app/data/manifests/revisions/<revision>/artifacts.json
+/app/data/manifests/revisions/<revision>/artifacts.json.sha256
 ```
 
 原子发布流程：
 
 ```python
-write_json(temp_file)
-flush()
-os.fsync()
-validate(temp_file)
-os.replace(temp_file, final_file)
-write_sha256_sidecar()
+write_json(revision_dir / "artifacts.json")
+write_sha256_sidecar(revision_dir / "artifacts.json.sha256")
+flush_and_fsync_revision_pair()
+validate(revision_dir / "artifacts.json")
+os.replace(temp_revision_dir, immutable_revision_dir)
+os.replace(temp_current_pointer, current_pointer)
 ```
+
+Manifest 与 sidecar 先写入同一个不可变 revision 目录；只有两者都完整落盘并
+通过验证后才原子切换 `current_pointer`。读取端必须先读取一次 pointer，再从
+该 revision 目录读取两份文件，避免观察到新 Manifest 与旧 sidecar 的组合。
 
 发布失败时：
 

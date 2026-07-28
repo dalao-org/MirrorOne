@@ -68,7 +68,7 @@ def test_failed_candidate_keeps_last_known_good(tmp_path: Path):
     assert publisher.manifest_path.read_bytes() == previous
 
 
-def test_sidecar_replace_failure_rolls_back_public_pair(monkeypatch, tmp_path: Path):
+def test_pointer_replace_failure_keeps_previous_public_pair(monkeypatch, tmp_path: Path):
     publisher = ManifestPublisher(tmp_path)
     publisher.publish(manifest_document())
     previous_manifest = publisher.manifest_path.read_bytes()
@@ -82,15 +82,26 @@ def test_sidecar_replace_failure_rolls_back_public_pair(monkeypatch, tmp_path: P
     real_replace = publisher_module.os.replace
     failed_once = False
 
-    def fail_sidecar_once(source, destination):
+    def fail_pointer_once(source, destination):
         nonlocal failed_once
-        if str(destination).endswith("artifacts.json.sha256") and not failed_once:
+        if destination == publisher.pointer_path and not failed_once:
             failed_once = True
-            raise OSError("injected sidecar failure")
+            assert publisher.manifest_path.read_bytes() == previous_manifest
+            assert publisher.sidecar_path.read_bytes() == previous_sidecar
+            raise OSError("injected pointer failure")
         return real_replace(source, destination)
 
-    monkeypatch.setattr(publisher_module.os, "replace", fail_sidecar_once)
+    monkeypatch.setattr(publisher_module.os, "replace", fail_pointer_once)
     with pytest.raises(OSError, match="injected"):
         publisher.publish(changed)
     assert publisher.manifest_path.read_bytes() == previous_manifest
     assert publisher.sidecar_path.read_bytes() == previous_sidecar
+
+
+def test_public_pointer_always_resolves_a_matching_pair(tmp_path: Path):
+    publisher = ManifestPublisher(tmp_path)
+    result = publisher.publish(manifest_document())
+    expected = f"{result['sha256']}  artifacts.json\n".encode("ascii")
+    assert publisher.sidecar_path.read_bytes() == expected
+    assert publisher.manifest_path.parent == publisher.sidecar_path.parent
+    assert publisher.manifest_path.parent.parent == publisher.revisions_dir

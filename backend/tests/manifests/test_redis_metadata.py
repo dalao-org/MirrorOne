@@ -23,8 +23,10 @@ class FakeRedis:
     async def delete(self, key):
         self.values.pop(key, None)
 
-    async def eval(self, script, key_count, key, token):
+    async def eval(self, script, key_count, key, token, *args):
         if self.values.get(key) == token:
+            if "expire" in script:
+                return 1
             await self.delete(key)
             return 1
         return 0
@@ -234,6 +236,27 @@ async def test_same_url_merges_optional_metadata_without_losing_checksum(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_checksum_map_populates_legacy_scalar_fields(monkeypatch):
+    fake = FakeRedis()
+
+    async def get_fake():
+        return fake
+
+    monkeypatch.setattr(redis_client, "get_redis", get_fake)
+    await redis_client.set_redirect_rule(
+        filename="sample.tar.gz",
+        url="https://example.com/sample.tar.gz",
+        version="1",
+        source="sample",
+        checksums={"MD5SUM": "b" * 32, "SHA-256": "a" * 64},
+    )
+    rule = await redis_client.get_redirect_url("sample.tar.gz")
+    assert rule["checksum_type"] == "sha256"
+    assert rule["checksum"] == "a" * 64
+    assert rule["checksums"] == {"md5": "b" * 32, "sha256": "a" * 64}
+
+
+@pytest.mark.asyncio
 async def test_manifest_snapshot_is_transactional_and_rejects_active_batch(monkeypatch):
     fake = FakeRedis()
 
@@ -252,11 +275,22 @@ async def test_manifest_snapshot_is_transactional_and_rejects_active_batch(monke
     assert versions == {}
     assert conflicts == []
     token = await redis_client.begin_manifest_metadata_update()
+    assert await redis_client.refresh_manifest_metadata_update(token)
     with pytest.raises(RuntimeError, match="in progress"):
         await redis_client.get_manifest_snapshot()
     with pytest.raises(RuntimeError, match="already in progress"):
         await redis_client.begin_manifest_metadata_update()
     await redis_client.end_manifest_metadata_update(token)
+
+
+@pytest.mark.asyncio
+async def test_non_positive_manifest_event_limit_returns_empty_without_redis(monkeypatch):
+    async def unexpected_redis():
+        raise AssertionError("Redis should not be read for a non-positive limit")
+
+    monkeypatch.setattr(redis_client, "get_redis", unexpected_redis)
+    assert await redis_client.get_manifest_events(0) == []
+    assert await redis_client.get_manifest_events(-1) == []
 
 
 @pytest.mark.asyncio

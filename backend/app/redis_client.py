@@ -9,7 +9,11 @@ from typing import Any
 import redis.asyncio as redis
 
 from app.config import get_settings
-from app.manifests.checksum import normalize_algorithm, validate_checksum
+from app.manifests.checksum import (
+    choose_strongest,
+    normalize_algorithm,
+    validate_checksum,
+)
 from app.manifests.validator import validate_filename, validate_source_url
 
 settings = get_settings()
@@ -50,6 +54,7 @@ REDIS_SCHEMA_VERSION_KEY = "meta:redis_schema_version"
 MANIFEST_STATUS_KEY = "manifest:status"
 MANIFEST_EVENTS_KEY = "manifest:events"
 MANIFEST_METADATA_UPDATE_KEY = "manifest:metadata_update"
+MANIFEST_METADATA_UPDATE_TTL_SECONDS = 900
 REDIS_SCHEMA_VERSION = 2
 
 
@@ -133,17 +138,22 @@ async def set_redirect_rule(
         algorithm = normalize_algorithm(raw_algorithm)
         if algorithm and validate_checksum(algorithm, raw_digest):
             normalized_checksums[algorithm] = raw_digest.strip().lower()
-    algorithm = normalize_algorithm(checksum_type)
-    if checksum and algorithm and validate_checksum(algorithm, checksum):
-        normalized_checksums[algorithm] = checksum.strip().lower()
+    scalar_algorithm = normalize_algorithm(checksum_type)
+    if (
+        checksum
+        and scalar_algorithm
+        and validate_checksum(scalar_algorithm, checksum)
+    ):
+        normalized_checksums[scalar_algorithm] = checksum.strip().lower()
+    selected_checksum = choose_strongest(normalized_checksums)
 
     now = datetime.now(UTC).isoformat()
     rule = {
         "url": url,
         "version": version.strip(),
         "source": source,
-        "checksum": normalized_checksums.get(algorithm) if algorithm else None,
-        "checksum_type": algorithm if algorithm in normalized_checksums else None,
+        "checksum": selected_checksum[1] if selected_checksum else None,
+        "checksum_type": selected_checksum[0] if selected_checksum else None,
         "checksums": normalized_checksums,
         "kind": kind,
         "platform": platform or {"os": "any", "arch": "any", "libc": None},
@@ -378,12 +388,30 @@ async def begin_manifest_metadata_update() -> str:
     acquired = await r.set(
         MANIFEST_METADATA_UPDATE_KEY,
         token,
-        ex=21600,
+        ex=MANIFEST_METADATA_UPDATE_TTL_SECONDS,
         nx=True,
     )
     if not acquired:
         raise RuntimeError("another artifact metadata update is already in progress")
     return token
+
+
+async def refresh_manifest_metadata_update(token: str) -> bool:
+    """Refresh the batch marker only while it still belongs to the caller."""
+    r = await get_redis()
+    refreshed = await r.eval(
+        """
+        if redis.call('get', KEYS[1]) == ARGV[1] then
+            return redis.call('expire', KEYS[1], ARGV[2])
+        end
+        return 0
+        """,
+        1,
+        MANIFEST_METADATA_UPDATE_KEY,
+        token,
+        MANIFEST_METADATA_UPDATE_TTL_SECONDS,
+    )
+    return bool(refreshed)
 
 
 async def end_manifest_metadata_update(token: str) -> None:
@@ -537,6 +565,8 @@ async def get_manifest_status() -> dict[str, Any]:
 
 async def get_manifest_events(limit: int = 20) -> list[dict[str, Any]]:
     """Read recent manifest/cache integrity events."""
+    if limit <= 0:
+        return []
     r = await get_redis()
-    raw = await r.lrange(MANIFEST_EVENTS_KEY, 0, max(limit - 1, 0))
+    raw = await r.lrange(MANIFEST_EVENTS_KEY, 0, limit - 1)
     return [json.loads(value) for value in raw]

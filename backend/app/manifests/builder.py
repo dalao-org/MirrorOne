@@ -66,11 +66,11 @@ def _normalized_checksums(rule: dict) -> dict[str, str]:
     for raw_algorithm, raw_digest in (rule.get("checksums") or {}).items():
         algorithm = normalize_algorithm(raw_algorithm)
         if algorithm and validate_checksum(algorithm, raw_digest):
-            checksums[algorithm] = raw_digest.lower()
+            checksums[algorithm] = raw_digest.strip().lower()
     algorithm = normalize_algorithm(rule.get("checksum_type"))
     digest = rule.get("checksum")
     if algorithm and validate_checksum(algorithm, digest):
-        checksums[algorithm] = digest.lower()
+        checksums[algorithm] = digest.strip().lower()
     return dict(sorted(checksums.items()))
 
 

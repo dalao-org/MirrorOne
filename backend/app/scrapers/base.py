@@ -37,11 +37,14 @@ def normalize_resource(resource: Resource) -> tuple[Resource, list[str]]:
     resource.file_name = validate_filename(resource.file_name)
     resource.url = validate_source_url(resource.url)
     resource.version = resource.version.strip()
-    resource.aliases = sorted({
+    normalized_aliases = {
         validate_filename(alias)
         for alias in resource.aliases
-        if alias and alias != resource.file_name
-    })
+        if alias
+    }
+    resource.aliases = sorted(
+        alias for alias in normalized_aliases if alias != resource.file_name
+    )
 
     normalized_checksums: dict[str, str] = {}
     candidates = dict(resource.checksums)

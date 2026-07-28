@@ -13,10 +13,17 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
-from app.manifests.checksum import choose_strongest, digest_file, digests_equal
+from app.manifests.checksum import (
+    choose_strongest,
+    digest_file,
+    digests_equal,
+    normalize_algorithm,
+    validate_checksum,
+)
 from app.manifests.metrics import increment_metric
 from app.manifests.validator import (
     ensure_within_root,
+    ValidatedNetworkTarget,
     validate_filename,
     validate_network_target,
 )
@@ -34,6 +41,66 @@ class CacheIntegrityError(RuntimeError):
 def _redact_url(url: str) -> str:
     parsed = urlsplit(url)
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+
+def _canonical_checksums(checksums: dict[str, str] | None) -> dict[str, str]:
+    """Return only supported, normalized upstream digests."""
+    normalized: dict[str, str] = {}
+    for raw_algorithm, raw_digest in (checksums or {}).items():
+        algorithm = normalize_algorithm(raw_algorithm)
+        if algorithm and validate_checksum(algorithm, raw_digest):
+            normalized[algorithm] = raw_digest.strip().lower()
+    return normalized
+
+
+def _build_download_request(
+    client: httpx.AsyncClient,
+    target: ValidatedNetworkTarget | str,
+    address: str | None = None,
+) -> httpx.Request:
+    """Build a request whose TCP destination is one of the validated addresses."""
+    if isinstance(target, str):
+        return client.build_request("GET", target)
+
+    parsed = urlsplit(target.url)
+    selected_address = address or target.addresses[0]
+    address_host = f"[{selected_address}]" if ":" in selected_address else selected_address
+    netloc = (
+        f"{address_host}:{parsed.port}"
+        if parsed.port is not None
+        else address_host
+    )
+    pinned_url = urlunsplit(
+        (parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment)
+    )
+    request = client.build_request(
+        "GET",
+        pinned_url,
+        headers={"Host": parsed.netloc},
+    )
+    request.extensions["sni_hostname"] = target.hostname
+    return request
+
+
+async def _send_validated_request(
+    client: httpx.AsyncClient,
+    target: ValidatedNetworkTarget | str,
+) -> httpx.Response:
+    """Try the approved addresses without allowing the transport to re-resolve DNS."""
+    if isinstance(target, str):
+        request = _build_download_request(client, target)
+        return await client.send(request, stream=True, follow_redirects=False)
+
+    last_error: httpx.HTTPError | None = None
+    for address in target.addresses:
+        request = _build_download_request(client, target, address)
+        try:
+            return await client.send(request, stream=True, follow_redirects=False)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("validated source URL has no approved addresses")
 
 
 def _cache_file_path(cache_path: Path, source: str, filename: str) -> Path:
@@ -89,6 +156,7 @@ def _verify_existing_file(
     checksums: dict[str, str],
 ) -> tuple[bool, dict]:
     """Re-check an existing cache entry using upstream or prior observed metadata."""
+    checksums = _canonical_checksums(checksums)
     if not dest_path.is_file() or dest_path.stat().st_size <= 0:
         if dest_path.exists():
             quarantined = _quarantine(dest_path, "empty_file")
@@ -210,7 +278,10 @@ def is_file_cached(cache_path: Path, source: str, filename: str) -> bool:
 
 def get_cached_file_path(cache_path: Path, source: str, filename: str) -> Path | None:
     """Get the path to a cached file if it exists."""
-    file_path = _cache_file_path(cache_path, source, filename)
+    try:
+        file_path = _cache_file_path(cache_path, source, filename)
+    except ValueError:
+        return None
     if file_path.is_file() and file_path.stat().st_size > 0:
         return file_path
     return None
@@ -237,26 +308,22 @@ async def download_file(
     """
     temp_path = dest_path.with_name(f"{dest_path.name}.{uuid.uuid4().hex}.part")
     response: httpx.Response | None = None
+    checksums = _canonical_checksums(checksums)
     try:
         # Create parent directory if needed
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
         current_url = url
         for redirect_count in range(11):
-            await validate_network_target(current_url)
-            request = client.build_request("GET", current_url)
-            response = await client.send(
-                request,
-                stream=True,
-                follow_redirects=False,
-            )
+            target = await validate_network_target(current_url)
+            response = await _send_validated_request(client, target)
             if response.is_redirect and response.headers.get("location"):
                 if redirect_count >= 10:
                     raise httpx.TooManyRedirects(
                         "Maximum of 10 redirects exceeded",
-                        request=request,
+                        request=response.request,
                     )
-                next_url = urljoin(str(response.url), response.headers["location"])
+                next_url = urljoin(current_url, response.headers["location"])
                 await response.aclose()
                 response = None
                 current_url = next_url
@@ -269,15 +336,18 @@ async def download_file(
 
             total_size = int(response.headers.get("content-length", 0))
             received = 0
-            
-            with open(temp_path, "wb") as f:
-                async for chunk in response.aiter_raw(chunk_size=8192):
-                    f.write(chunk)
+
+            stream = await asyncio.to_thread(temp_path.open, "wb")
+            try:
+                async for chunk in response.aiter_raw(chunk_size=1024 * 1024):
+                    await asyncio.to_thread(stream.write, chunk)
                     received += len(chunk)
                     if progress_callback:
                         progress_callback(received, total_size)
-                f.flush()
-                os.fsync(f.fileno())
+                await asyncio.to_thread(stream.flush)
+                await asyncio.to_thread(os.fsync, stream.fileno())
+            finally:
+                await asyncio.to_thread(stream.close)
 
             if received <= 0:
                 raise CacheIntegrityError("downloaded file is empty")
@@ -286,12 +356,16 @@ async def download_file(
                     f"download size mismatch: expected={total_size} actual={received}"
                 )
 
-            selected = choose_strongest(checksums or {})
+            selected = choose_strongest(checksums)
             if selected:
                 algorithm, expected = selected
-                actual = digest_file(temp_path, algorithm)
+                actual = await asyncio.to_thread(digest_file, temp_path, algorithm)
                 if not digests_equal(actual, expected):
-                    quarantined = _quarantine(temp_path, "checksum_mismatch")
+                    quarantined = await asyncio.to_thread(
+                        _quarantine,
+                        temp_path,
+                        "checksum_mismatch",
+                    )
                     increment_metric("mirrorone_cache_checksum_mismatch_total")
                     try:
                         from app import redis_client
@@ -317,15 +391,23 @@ async def download_file(
                     dest_path.name,
                 )
 
-            observed_sha256 = digest_file(temp_path, "sha256")
-            os.replace(temp_path, dest_path)
+            observed_sha256 = await asyncio.to_thread(
+                digest_file,
+                temp_path,
+                "sha256",
+            )
+            await asyncio.to_thread(os.replace, temp_path, dest_path)
             cached_at = datetime.now(UTC).isoformat()
-            _write_cache_metadata(dest_path, {
-                "cached_at": cached_at,
-                "integrity_status": integrity_status,
-                "observed_digests": {"sha256": observed_sha256},
-                "upstream_checksums": checksums or {},
-            })
+            await asyncio.to_thread(
+                _write_cache_metadata,
+                dest_path,
+                {
+                    "cached_at": cached_at,
+                    "integrity_status": integrity_status,
+                    "observed_digests": {"sha256": observed_sha256},
+                    "upstream_checksums": checksums,
+                },
+            )
             logger.info(f"Downloaded: {dest_path.name} ({received} bytes)")
             return True
         finally:
@@ -335,8 +417,8 @@ async def download_file(
     except Exception as e:
         logger.error("Failed to download %s: %s", _redact_url(url), e)
         # Clean up temp file if exists
-        if temp_path.exists():
-            temp_path.unlink()
+        if await asyncio.to_thread(temp_path.exists):
+            await asyncio.to_thread(temp_path.unlink)
         return False
     finally:
         if response is not None:
@@ -367,10 +449,15 @@ async def download_resource(
         True if file exists or download succeeded
     """
     dest_path = _cache_file_path(cache_path, source, filename)
+    checksums = _canonical_checksums(checksums)
     
     # Skip if already exists
     if skip_existing and dest_path.is_file():
-        valid, details = _verify_existing_file(dest_path, checksums or {})
+        valid, details = await asyncio.to_thread(
+            _verify_existing_file,
+            dest_path,
+            checksums,
+        )
         if not valid:
             await _record_cache_failure(filename, details)
             return False
@@ -442,7 +529,14 @@ def find_cached_file(cache_path: Path, filename: str) -> tuple[Path, str] | None
     ]
     
     for source_dir in source_dirs:
-        file_path = ensure_within_root(source_dir / filename, cache_path)
+        try:
+            file_path = ensure_within_root(source_dir / filename, cache_path)
+        except ValueError:
+            logger.warning(
+                "Skipping cache directory outside root: %s",
+                source_dir.name,
+            )
+            continue
         
         if file_path.is_file() and file_path.stat().st_size > 0:
             logger.info(f"Found cached file: {file_path}")
@@ -484,9 +578,13 @@ async def download_resources_parallel(
             url = resource.get("url", "")
             filename = resource.get("file_name", "")
             source = resource.get("source", "unknown")
-            checksums = dict(resource.get("checksums") or {})
+            checksums = _canonical_checksums(resource.get("checksums"))
             if resource.get("checksum") and resource.get("checksum_type"):
-                checksums[resource["checksum_type"]] = resource["checksum"]
+                checksums.update(
+                    _canonical_checksums({
+                        resource["checksum_type"]: resource["checksum"],
+                    })
+                )
             try:
                 dest_path = _cache_file_path(cache_path, source, filename)
             except ValueError as exc:
@@ -496,7 +594,11 @@ async def download_resources_parallel(
             
             # Skip if already exists
             if skip_existing and dest_path.is_file():
-                valid, details = _verify_existing_file(dest_path, checksums)
+                valid, details = await asyncio.to_thread(
+                    _verify_existing_file,
+                    dest_path,
+                    checksums,
+                )
                 if not valid:
                     results["failed"] += 1
                     await _record_cache_failure(filename, details)

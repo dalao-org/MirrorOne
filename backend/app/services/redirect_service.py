@@ -1,6 +1,7 @@
 """
 Redirect service for handling file redirects.
 """
+import asyncio
 import logging
 
 from app import redis_client
@@ -80,7 +81,7 @@ async def get_suggest_versions_content() -> str:
     """
     from app.manifests.service import get_publisher
 
-    snapshot = get_publisher().read_current()
+    snapshot = await asyncio.to_thread(get_publisher().read_current)
     versions = (
         snapshot.get("version_recommendations", {})
         if snapshot

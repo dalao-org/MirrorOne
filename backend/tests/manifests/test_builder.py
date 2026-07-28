@@ -14,7 +14,7 @@ async def test_builder_supports_old_redis_data_and_stable_sort(monkeypatch, tmp_
             "url": "https://www.php.net/distributions/php-8.4.12.tar.gz",
             "version": "8.4.12",
             "source": "php",
-            "checksum": "a" * 64,
+            "checksum": f"  {'A' * 64}  ",
             "checksum_type": "SHA-256",
             "updated_at": "2026-07-28T08:00:00Z",
         },
