@@ -161,9 +161,10 @@ understood.
 ### Version suggestions differ after upgrade
 
 The text interface now follows the last successful snapshot. If a new Redis
-version recommendation does not resolve to an artifact, publication fails and
-the previous snapshot remains active; this prevents a recommendation from
-pointing at a missing download.
+version recommendation does not resolve to an artifact, the builder omits that
+recommendation and records an `unresolved_version_recommendation` conflict.
+This keeps the Manifest available without allowing a recommendation to point at
+a missing download.
 
 ## Tests
 

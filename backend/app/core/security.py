@@ -62,8 +62,6 @@ def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = 
     
     to_encode.update({"exp": expire})
     
-    logger.info(f"Creating token with SECRET_KEY: {settings.SECRET_KEY[:8]}... (algorithm: {settings.JWT_ALGORITHM})")
-    
     encoded_jwt = jwt.encode(
         to_encode,
         settings.SECRET_KEY,
@@ -86,13 +84,12 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     settings = get_settings()  # Get settings at call time, not import time
     
     try:
-        logger.info(f"Decoding token with SECRET_KEY: {settings.SECRET_KEY[:8]}... (algorithm: {settings.JWT_ALGORITHM})")
         payload = jwt.decode(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM]
         )
-        logger.info(f"Token decoded successfully, sub: {payload.get('sub')}")
+        logger.debug("Token decoded successfully")
         return payload
     except jwt.ExpiredSignatureError:
         logger.warning("Token expired")

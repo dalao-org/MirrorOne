@@ -112,3 +112,41 @@ async def test_malformed_rule_is_reported_without_aborting_other_artifacts(
     assert manifest.artifacts[0].size.source == "unknown"
     assert manifest.conflicts[0].filename == "broken.tar.gz"
     assert manifest.conflicts[0].reason == "invalid_redirect_rule"
+
+
+@pytest.mark.asyncio
+async def test_unresolved_recommendations_are_omitted_without_aborting_manifest(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(
+        "app.manifests.builder.cache_service.get_cache_info",
+        lambda *args: None,
+    )
+    manifest = await ManifestBuilder({
+        "cache_path": str(tmp_path),
+        "manifest_generator_commit": "abcdef0",
+    }).build(
+        rules={
+            "php-8.4.12.tar.gz": {
+                "url": "https://www.php.net/distributions/php-8.4.12.tar.gz",
+                "version": "8.4.12",
+                "source": "php",
+            },
+        },
+        versions={
+            "php84_ver": "8.4.12",
+            "php74_ver": "7.4.33",
+            "openssl_ver": "1.1.1w",
+        },
+        conflicts=[],
+    )
+
+    assert manifest.version_recommendations == {"php84_ver": "8.4.12"}
+    assert {
+        (conflict.filename, conflict.reason)
+        for conflict in manifest.conflicts
+    } == {
+        ("openssl_ver", "unresolved_version_recommendation"),
+        ("php74_ver", "unresolved_version_recommendation"),
+    }

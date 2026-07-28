@@ -247,6 +247,31 @@ class ManifestBuilder:
                 item.filename,
             )
         )
+        resolved_versions = dict(versions)
+        if artifacts:
+            artifact_versions = {item.version for item in artifacts}
+            unresolved_recommendations = {
+                key: version
+                for key, version in versions.items()
+                if version not in artifact_versions
+            }
+            if unresolved_recommendations:
+                resolved_versions = {
+                    key: version
+                    for key, version in versions.items()
+                    if key not in unresolved_recommendations
+                }
+                generated_conflicts.extend(
+                    {
+                        "filename": key,
+                        "reason": "unresolved_version_recommendation",
+                        "candidates": [{
+                            "recommendation_key": key,
+                            "version": version,
+                        }],
+                    }
+                    for key, version in sorted(unresolved_recommendations.items())
+                )
         conflicts_models = [
             ManifestConflict(
                 filename=conflict["filename"],
@@ -285,7 +310,7 @@ class ManifestBuilder:
                     ).rstrip("/"),
                     current_mode=str(self.settings.get("mirror_type", "redirect")),
                 ),
-                "version_recommendations": dict(sorted(versions.items())),
+                "version_recommendations": dict(sorted(resolved_versions.items())),
                 "artifacts": artifacts,
                 "conflicts": conflicts_models,
                 "statistics": ManifestStatistics(
